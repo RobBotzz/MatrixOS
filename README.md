@@ -9,12 +9,12 @@ This module is creates and manages views to be displayed on the matrix
 - Converting images/gifs (? to ?)
 - Build views/layouts
 
-## Controller
+## HAL
 
 This module communicates with the hardware (rotary encoder and matrix display)
 
-- React to button press/rotation/long press
-- Display pixels (? to datasignal)
+- React to button press/rotation/long press (Circuitpython rotaryio)
+- Display pixels (? to datasignal) (Circuitpython RGB Matrix, Matrixportal library, hzeller library https://www.hackster.io/idreams/getting-started-with-rgb-matrix-panel-adaa49#toc-install-the-library-4)
 
 ## OS
 

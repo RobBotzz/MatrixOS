@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "description": "Default setting for cmake project",
+      "hidden": false,
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${workspaceFolder}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
+      }
+    },
+    {
+      "name": "pi-zero",
+      "description": "Cross-Compile für Raspberry Pi Zero",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build-pi",
+      "toolchainFile": "${sourceDir}/pi-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ]
+}
