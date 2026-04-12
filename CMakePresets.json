@@ -3,23 +3,43 @@
   "configurePresets": [
     {
       "name": "default",
-      "description": "Default setting for cmake project",
+      "description": "Default Windows Build (MinGW)",
       "hidden": false,
       "generator": "MinGW Makefiles",
-      "binaryDir": "${workspaceFolder}/build",
+      "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "YES"
       }
     },
     {
-      "name": "pi-zero",
-      "description": "Cross-Compile für Raspberry Pi Zero",
-      "generator": "MinGW Makefiles",
+      "name": "pi-zero-base",
+      "hidden": true,
+      "description": "Preset basis for pi-zero builds",
       "binaryDir": "${sourceDir}/build-pi",
       "toolchainFile": "${sourceDir}/pi-toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "pi-zero-win",
+      "inherits": "pi-zero-base",
+      "description": "Cross-compile on windows system",
+      "generator": "MinGW Makefiles",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-g++.exe"
+      }
+    },
+    {
+      "name": "pi-zero-ci",
+      "inherits": "pi-zero-base",
+      "description": "GitHub Actions build",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "arm-linux-gnueabihf-gcc",
+        "CMAKE_CXX_COMPILER": "arm-linux-gnueabihf-g++"
       }
     }
   ]

@@ -1,0 +1,41 @@
+name: Raspberry Pi Zero Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
+      - name: Configure CMake
+        run: cmake --preset pi-zero-ci
+
+      - name: Build Project
+        run: cmake --build build-pi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-zero-executable
+          path: build-pi/bin/
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Unit-tests
+        run: |
+          echo "========================================="
+          echo "TODO: Configure automatic testing later!"
+          echo "========================================="

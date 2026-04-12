@@ -1,9 +1,7 @@
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR arm)
 
-set(CMAKE_C_COMPILER "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-gcc.exe")
-set(CMAKE_CXX_COMPILER "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-g++.exe")
-
+#Avoid including/loading native libraries (Important when cross-compiling)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
