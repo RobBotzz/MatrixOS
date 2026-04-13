@@ -28,8 +28,8 @@
       "description": "Cross-compile on windows system",
       "generator": "MinGW Makefiles",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-gcc.exe",
-        "CMAKE_CXX_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-g++.exe"
+        "CMAKE_C_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-gcc.exe REPLACE WITH ARCH x64 COMPILER",
+        "CMAKE_CXX_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-g++.exe REPLACE WITH ARCH x64 COMPILER"
       }
     },
     {
@@ -38,8 +38,8 @@
       "description": "GitHub Actions build",
       "generator": "Unix Makefiles",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "arm-linux-gnueabihf-gcc",
-        "CMAKE_CXX_COMPILER": "arm-linux-gnueabihf-g++"
+        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++"
       }
     }
   ]

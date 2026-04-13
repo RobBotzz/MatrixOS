@@ -16,7 +16,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+          sudo apt-get install -y cmake gcc-aarch64-linux-gnu
 
       - name: Configure CMake
         run: cmake --preset pi-zero-ci
