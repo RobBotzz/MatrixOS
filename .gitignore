@@ -6,3 +6,6 @@ CMakeFiles/
 *.dll
 *.so
 .vscode/
+
+Notes.txt
+TODO.txt

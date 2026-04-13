@@ -193,3 +193,11 @@ Requirements:
 - 2048
 - Infinite terrain generator
 - Collatz sequence generator (Number to image)
+
+### How to Deploy to Pi
+
+- Install Git
+- Install jq
+- Create PAT Key with access Action (readonly)
+- Configure deployment script (pi-deployment/deploy.sh)
+- Run script
