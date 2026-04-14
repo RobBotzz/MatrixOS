@@ -39,7 +39,9 @@
       "generator": "Unix Makefiles",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
-        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++"
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
       }
     }
   ]

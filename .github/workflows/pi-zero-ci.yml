@@ -18,6 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{runner.os}}-aarch64-ccache
+
       - name: Configure CMake
         run: cmake --preset pi-zero-ci
 
