@@ -14,8 +14,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(MATRIX_DIR ${CMAKE_SOURCE_DIR}/external/rpi-rgb-led-matrix)
 add_library(matrix STATIC
-    ${MATRIX_DIR}/lib/graphics.cc
     ${MATRIX_DIR}/lib/bdf-font.cc
+    ${MATRIX_DIR}/lib/content-streamer-c.cc
+    ${MATRIX_DIR}/lib/content-streamer.cc
+    ${MATRIX_DIR}/lib/framebuffer.cc
+    ${MATRIX_DIR}/lib/gpio.cc
+    ${MATRIX_DIR}/lib/graphics.cc
+    ${MATRIX_DIR}/lib/hardware-mapping.c
+    ${MATRIX_DIR}/lib/led-matrix-c.cc
+    ${MATRIX_DIR}/lib/led-matrix.cc
+    ${MATRIX_DIR}/lib/multiplex-mappers.cc
+    ${MATRIX_DIR}/lib/options-initialize.cc
+    ${MATRIX_DIR}/lib/pixel-mapper.cc
+    ${MATRIX_DIR}/lib/thread.cc
     #Add additional files here
 )
 
