@@ -1,10 +1,9 @@
 #!/bin/bash
+source .env
 
-# --- Konfiguration ---
-GITHUB_TOKEN="REPLACE WITH TOKEN"
+# --- Configuration ---
 REPO="RobBotzz/MatrixOS"
 DEST_FOLDER="/home/robin/MatrixOS/build"
-TEMP_ZIP="/tmp/latest_build.zip"
 # ---------------------
 
 echo "🔍 Search for newest artifact of $REPO..."
