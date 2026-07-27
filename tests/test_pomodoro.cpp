@@ -49,6 +49,22 @@ int litInRow(const Surface &surface, int y, int fromX = 0)
     return lit;
 }
 
+/// Counts pixels clearly above the dim shade, so bar and tomato tests survive a
+/// change of palette.
+int brightInRow(const Surface &surface, int y, int fromX = 0)
+{
+    int bright = 0;
+    for (int x = fromX; x < surface.width(); ++x)
+    {
+        const Color pixel = surface.pixel(x, y);
+        if (pixel.r + pixel.g + pixel.b > 150)
+        {
+            ++bright;
+        }
+    }
+    return bright;
+}
+
 int litInRect(const Surface &surface, int x0, int y0, int x1, int y1)
 {
     int lit = 0;
@@ -233,16 +249,95 @@ TEST_CASE("a long press returns to setting from every state and keeps the durati
     }
 }
 
-TEST_CASE("focus shows the tomato, break gives the width to the digits instead")
+TEST_CASE("focus draws the tomato, break draws the cup in the same slot")
 {
-    // The break digits are centred and 58 px wide, so they reach well into the left
-    // half. Only the outermost sliver belongs to the tomato alone.
     PomodoroApp app;
-    CHECK(litInRect(frameOf(app), 0, 13, 3, 24) > 0);
+
+    CHECK_FALSE(frameOf(app).pixel(10, 15) == Color::black());
 
     send(app, InputType::Press);
     REQUIRE(app.mode() == Mode::Break);
-    CHECK(litInRect(frameOf(app), 0, 13, 3, 24) == 0);
+
+    const Surface break_frame = frameOf(app);
+    // The tomato is solid, the cup hollow, so the centre of the slot tells them apart.
+    CHECK(break_frame.pixel(10, 15) == Color::black());
+    CHECK(litInRect(break_frame, 2, 4, 19, 25) == 70);
+}
+
+TEST_CASE("the colon sits between the pairs, in the accent colour, in both modes")
+{
+    PomodoroApp app;
+
+    // The label is drawn in the accent colour, so its first pixel is the reference.
+    const Surface focus_frame = frameOf(app);
+    CHECK(focus_frame.pixel(40, 17) == focus_frame.pixel(20, 4));
+    CHECK(focus_frame.pixel(41, 22) == focus_frame.pixel(20, 4));
+    CHECK(focus_frame.pixel(42, 17) == Color::black());
+
+    send(app, InputType::Press);
+    REQUIRE(app.mode() == Mode::Break);
+
+    // Break uses the same layout, so the colon sits in the same place.
+    const Surface break_frame = frameOf(app);
+    CHECK(break_frame.pixel(40, 17) == break_frame.pixel(20, 4));
+    CHECK(break_frame.pixel(41, 22) == break_frame.pixel(20, 4));
+    CHECK(break_frame.pixel(42, 17) == Color::black());
+
+    CHECK_FALSE(focus_frame.pixel(40, 17) == break_frame.pixel(40, 17));
+}
+
+TEST_CASE("the colon marks the second while running")
+{
+    PomodoroApp app;
+    startWithOneMinuteEach(app);
+
+    advance(app, 0.25F, 0.05F);
+    CHECK_FALSE(frameOf(app).pixel(40, 17) == Color::black());
+
+    advance(app, 0.5F, 0.05F);
+    CHECK(frameOf(app).pixel(40, 17) == Color::black());
+
+    advance(app, 0.5F, 0.05F);
+    CHECK_FALSE(frameOf(app).pixel(40, 17) == Color::black());
+}
+
+TEST_CASE("the colon stays lit while the digits are frozen")
+{
+    PomodoroApp app;
+    startWithOneMinuteEach(app);
+
+    // Straight into the half of the second that would hide a running colon.
+    advance(app, 0.75F, 0.05F);
+    REQUIRE(frameOf(app).pixel(40, 17) == Color::black());
+
+    send(app, InputType::Press);
+    REQUIRE(app.state() == State::Paused);
+    CHECK_FALSE(frameOf(app).pixel(40, 17) == Color::black());
+}
+
+TEST_CASE("the spent part of the bar stays visible, dimmed")
+{
+    PomodoroApp app;
+    startWithOneMinuteEach(app);
+    advance(app, 40.0F);
+
+    const Surface frame = frameOf(app);
+
+    // The whole span is drawn, but only part of it brightly.
+    CHECK(litInRow(frame, 28) > brightInRow(frame, 28));
+    CHECK(brightInRow(frame, 28) > 0);
+}
+
+TEST_CASE("the leaves drain with the fruit")
+{
+    PomodoroApp app;
+    startWithOneMinuteEach(app);
+
+    const int leaves_full = brightInRow(frameOf(app), 5, 0);
+    REQUIRE(leaves_full > 0);
+
+    advance(app, 30.0F);
+    CHECK(brightInRow(frameOf(app), 5, 0) < leaves_full);
 }
 
 TEST_CASE("the tomato empties as the focus timer runs down")
@@ -250,9 +345,9 @@ TEST_CASE("the tomato empties as the focus timer runs down")
     PomodoroApp app;
     startWithOneMinuteEach(app);
 
-    const int full = litInRect(frameOf(app), 0, 9, 17, 28);
+    const int full = litInRect(frameOf(app), 2, 6, 19, 25);
     advance(app, 55.0F);
-    const int nearly_done = litInRect(frameOf(app), 0, 9, 17, 28);
+    const int nearly_done = litInRect(frameOf(app), 2, 6, 19, 25);
 
     // The husk stays visible, so the pixel count holds; what changes is how many of
     // them are bright pulp.
@@ -260,9 +355,9 @@ TEST_CASE("the tomato empties as the focus timer runs down")
 
     const Surface late = frameOf(app);
     int bright = 0;
-    for (int y = 9; y < 28; ++y)
+    for (int y = 6; y < 25; ++y)
     {
-        for (int x = 0; x < 17; ++x)
+        for (int x = 2; x < 19; ++x)
         {
             if (late.pixel(x, y).r > 200)
             {
@@ -274,13 +369,24 @@ TEST_CASE("the tomato empties as the focus timer runs down")
     CHECK(bright < full);
 }
 
-TEST_CASE("the bar appears only once a timer is running")
+TEST_CASE("the bar is full while setting, in both configuration steps")
 {
     PomodoroApp app;
-    CHECK(litInRow(frameOf(app), 26, 20) == 0);
+    CHECK(brightInRow(frameOf(app), 28) == 60);
 
+    send(app, InputType::Press);
+    REQUIRE(app.mode() == Mode::Break);
+    CHECK(brightInRow(frameOf(app), 28) == 60);
+}
+
+TEST_CASE("the bar shrinks once a timer runs")
+{
+    PomodoroApp app;
     startWithOneMinuteEach(app);
-    CHECK(litInRow(frameOf(app), 26, 20) > 0);
+    advance(app, 30.0F);
+
+    CHECK(brightInRow(frameOf(app), 28) < 60);
+    CHECK(brightInRow(frameOf(app), 28) > 0);
 }
 
 TEST_CASE("the break bar spans the whole width and shrinks")
@@ -291,11 +397,18 @@ TEST_CASE("the break bar spans the whole width and shrinks")
     send(app, InputType::Press);
     REQUIRE(app.mode() == Mode::Break);
 
-    const int at_start = litInRow(frameOf(app), 28);
-    CHECK(at_start > 32);
+    const int at_start = brightInRow(frameOf(app), 28);
+    CHECK(at_start > 40);
 
     advance(app, 40.0F);
-    CHECK(litInRow(frameOf(app), 28) < at_start);
+    CHECK(brightInRow(frameOf(app), 28) < at_start);
+
+    // Two pixels of margin on each side stay dark at all times.
+    const Surface frame = frameOf(app);
+    CHECK(frame.pixel(0, 28) == Color::black());
+    CHECK(frame.pixel(1, 28) == Color::black());
+    CHECK(frame.pixel(62, 28) == Color::black());
+    CHECK(frame.pixel(63, 28) == Color::black());
 }
 
 TEST_CASE("the alarm stops flashing eventually instead of forever")

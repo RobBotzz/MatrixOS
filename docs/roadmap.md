@@ -198,10 +198,14 @@ phases would have needed eight render paths.
 **Two durations, set in sequence.** Focus first, press moves to break, press starts. One
 encoder, two values, no extra gesture.
 
-**Layout.** Focus: tomato on the left that empties from the top as time runs down, `FOCUS` in
-`#FF4326`, four white digits without a colon, a red bar under them. Break: no tomato, so the
-digits get the full width with a colon, `BREAK` and the bar in `#22E6A4`, digits in a lighter
-green.
+**Layout.** Focus: a tomato on the left, leaves included, that empties from the top as time runs
+down; `FOCUS` in `#FF4326`; `MM:SS` in white; a red bar beneath. Break: no tomato, so the digits
+get more width, `BREAK` and the bar in `#2AE070`, digits in a lighter green.
+
+Two details that cost more than they look. The digits are placed **individually**, with the
+colon drawn as two blocks rather than taken from the font — beside the tomato only 44 pixels
+remain, and the font's own advance plus colon glyph need 46. And the bar draws its **spent part
+dimmed** rather than not at all, so the full span reads as a scale instead of a shrinking line.
 
 **No status labels.** The absence of the progress bar is what distinguishes setting from
 running, and blinking digits mark paused. Nothing else is on screen.

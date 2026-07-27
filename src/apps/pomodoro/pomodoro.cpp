@@ -20,32 +20,85 @@ namespace matrixos
 namespace
 {
 
+constexpr Color scaled(Color color, int percent)
+{
+    return Color{static_cast<std::uint8_t>(color.r * percent / 100),
+                 static_cast<std::uint8_t>(color.g * percent / 100),
+                 static_cast<std::uint8_t>(color.b * percent / 100)};
+}
+
 constexpr Color kFocusAccent{0xFF, 0x43, 0x26};
 constexpr Color kFocusDigits{255, 255, 255};
-constexpr Color kFocusPulpDim{56, 15, 8};
 constexpr Color kLeafColor{40, 180, 70};
 
-constexpr Color kBreakAccent{0x22, 0xE6, 0xA4};
-constexpr Color kBreakDigits{170, 255, 230};
+constexpr Color kBreakAccent{0x2A, 0xE0, 0x70};
+constexpr Color kBreakDigits{180, 255, 200};
+
+constexpr int kSpentPercent = 14;
+constexpr int kDrainedPercent = 45;
+constexpr int kSteamPercent = 65;
 
 constexpr int kDigitScale = 2;
-constexpr int kLabelTop = 0;
-constexpr int kDigitsTop = 9;
+constexpr int kColonWidth = 2;
+constexpr int kBarHeight = 2;
 
-constexpr int kTomatoCenterX = 8;
-constexpr int kTomatoCenterY = 18;
+constexpr int kTomatoCenterX = 10;
+constexpr int kTomatoCenterY = 15;
 constexpr int kTomatoRadiusX = 8;
 constexpr int kTomatoRadiusY = 9;
-constexpr int kLeafTop = 5;
+constexpr int kLeafTop = 2;
 
-constexpr int kFocusColumnLeft = 20;
-constexpr int kFocusDigitAdvance = 11;
-constexpr int kFocusBarTop = 26;
+// One layout for both modes; only the icon, the word and the colours differ.
+constexpr int kLabelTop = 4;
+constexpr int kDigitsTop = 13;
+constexpr int kColumnLeft = 20;
+constexpr int kDigitAdvance = 10;
+constexpr int kPairOffset = 24;
+constexpr int kColonOffset = 20;
+constexpr int kBarTop = 28;
+constexpr int kBarMargin = 2;
 
-constexpr int kBreakLabelLeft = 2;
-constexpr int kBreakBarTop = 28;
+constexpr int kCupWidth = 17;
+constexpr int kCupHeight = 21;
+constexpr int kSteamRows = 4;
 
-constexpr int kBarHeight = 2;
+/// Coffee cup, bit 0 leftmost. Drawn to fill the same box as the tomato, so the two
+/// screens weigh the same:
+///   ....#......#.....
+///   .....#....#......
+///   ....#......#.....
+///   .....#....#......
+///   .................
+///   ##############...
+///   #............#...
+///   #............#...
+///   #............####
+///   #............#..#
+///   #............#..#
+///   #............#..#
+///   #............#..#
+///   #............####
+///   #............#...
+///   #............#...
+///   #............#...
+///   #............#...
+///   #............#...
+///   .#..........#....
+///   ..##########.....
+constexpr std::array<std::uint32_t, kCupHeight> kCupRows = {
+    0x00810, 0x00420, 0x00810, 0x00420, 0x00000, 0x03FFF, 0x02001,
+    0x02001, 0x1E001, 0x12001, 0x12001, 0x12001, 0x12001, 0x1E001,
+    0x02001, 0x02001, 0x02001, 0x02001, 0x02001, 0x01002, 0x00FFC,
+};
+
+// The cup fills the tomato's box exactly; these guards fail the build if the tomato
+// is ever resized without redrawing it.
+constexpr int kTomatoTop = kLeafTop + 2;
+constexpr int kTomatoBottom = kTomatoCenterY + kTomatoRadiusY;
+constexpr int kCupLeft = kTomatoCenterX - kTomatoRadiusX;
+constexpr int kCupTop = kTomatoTop;
+static_assert(kCupWidth == 2 * kTomatoRadiusX + 1);
+static_assert(kCupHeight == kTomatoBottom - kTomatoTop + 1);
 
 constexpr float kPauseBlinkPeriod = 1.0F;
 constexpr float kAlarmBlinkPeriod = 0.4F;
@@ -53,51 +106,80 @@ constexpr float kAlarmFlashSeconds = 30.0F;
 
 constexpr int kMaxDisplayMinutes = 99;
 
-std::array<char, 8> formatTime(float seconds, bool withColon)
+std::array<char, 8> formatDigits(float seconds)
 {
     // Clamped here so the buffer size is provably enough, not enough by accident.
     const int total =
         std::clamp(static_cast<int>(std::ceil(seconds)), 0, kMaxDisplayMinutes * 60 + 59);
 
     std::array<char, 8> text{};
-    std::snprintf(text.data(), text.size(), withColon ? "%02d:%02d" : "%02d%02d", total / 60,
-                  total % 60);
+    std::snprintf(text.data(), text.size(), "%02d%02d", total / 60, total % 60);
     return text;
 }
 
-/// Draws each glyph individually so the spacing can be tightened; the four digits
-/// would not otherwise fit beside the tomato.
-void drawSpacedText(Surface &surface, int x, int y, std::string_view text, Color color, int scale,
-                    int advance)
+/// Places the four digits and the colon individually. Next to the tomato only 44
+/// pixels remain, which the font's own advance and colon glyph do not fit into.
+void drawTime(Surface &surface, int x, int y, float seconds, Color digits, Color colon,
+              bool showColon)
 {
-    for (std::size_t i = 0; i < text.size(); ++i)
-    {
-        drawText(surface, x + static_cast<int>(i) * advance, y, text.substr(i, 1), color, scale);
-    }
-}
+    const std::array<char, 8> text = formatDigits(seconds);
+    const std::string_view view{text.data()};
 
-void drawBar(Surface &surface, int x, int y, int width, float fraction, Color color)
-{
-    const int filled =
-        static_cast<int>(std::clamp(fraction, 0.0F, 1.0F) * static_cast<float>(width));
-    for (int offset = 0; offset < filled; ++offset)
+    const std::array<int, 4> offsets = {0, kDigitAdvance, kPairOffset, kPairOffset + kDigitAdvance};
+    for (std::size_t i = 0; i < offsets.size(); ++i)
     {
-        for (int row = 0; row < kBarHeight; ++row)
+        drawText(surface, x + offsets[i], y, view.substr(i, 1), digits, kDigitScale);
+    }
+
+    if (!showColon)
+    {
+        return;
+    }
+
+    for (const int dot : {4, 9})
+    {
+        for (int dy = 0; dy < kDigitScale; ++dy)
         {
-            surface.setPixel(x + offset, y + row, color);
+            for (int dx = 0; dx < kColonWidth; ++dx)
+            {
+                surface.setPixel(x + kColonOffset + dx, y + dot + dy, colon);
+            }
         }
     }
 }
 
-/// Empties from the top as the fraction falls: pulp below the level, husk above.
-void drawTomato(Surface &surface, float fraction, Color pulp, Color husk)
+/// The spent part stays visible in a very dim shade, so the whole span reads as a
+/// scale rather than as a bar that vanishes.
+void drawBar(Surface &surface, int x, int y, int width, float fraction, Color color)
 {
-    const int top = kTomatoCenterY - kTomatoRadiusY;
-    const int height = kTomatoRadiusY * 2 + 1;
-    const float level = static_cast<float>(top) +
-                        (1.0F - std::clamp(fraction, 0.0F, 1.0F)) * static_cast<float>(height);
+    const int filled =
+        static_cast<int>(std::clamp(fraction, 0.0F, 1.0F) * static_cast<float>(width));
+    const Color spent = scaled(color, kSpentPercent);
 
-    for (int y = top; y <= kTomatoCenterY + kTomatoRadiusY; ++y)
+    for (int offset = 0; offset < width; ++offset)
+    {
+        for (int row = 0; row < kBarHeight; ++row)
+        {
+            surface.setPixel(x + offset, y + row, offset < filled ? color : spent);
+        }
+    }
+}
+
+/// Empties from the top as the fraction falls. The level spans the leaves too, so
+/// they drain with the fruit instead of staying bright.
+void drawTomato(Surface &surface, float fraction)
+{
+    const int drain_top = kLeafTop;
+    const int drain_bottom = kTomatoCenterY + kTomatoRadiusY;
+    const float level =
+        static_cast<float>(drain_top) + (1.0F - std::clamp(fraction, 0.0F, 1.0F)) *
+                                            static_cast<float>(drain_bottom - drain_top + 1);
+
+    const auto shade = [level](int y, Color bright)
+    { return static_cast<float>(y) >= level ? bright : scaled(bright, kDrainedPercent); };
+
+    const int body_top = kTomatoCenterY - kTomatoRadiusY;
+    for (int y = body_top; y <= drain_bottom; ++y)
     {
         for (int x = kTomatoCenterX - kTomatoRadiusX; x <= kTomatoCenterX + kTomatoRadiusX; ++x)
         {
@@ -105,20 +187,41 @@ void drawTomato(Surface &surface, float fraction, Color pulp, Color husk)
                 static_cast<float>(x - kTomatoCenterX) / static_cast<float>(kTomatoRadiusX);
             const float dy =
                 static_cast<float>(y - kTomatoCenterY) / static_cast<float>(kTomatoRadiusY);
-            if (dx * dx + dy * dy > 1.0F)
+            if (dx * dx + dy * dy <= 1.0F)
             {
-                continue;
+                surface.setPixel(x, y, shade(y, kFocusAccent));
             }
-            surface.setPixel(x, y, static_cast<float>(y) >= level ? pulp : husk);
         }
     }
 
-    surface.setPixel(kTomatoCenterX, kLeafTop + 2, kLeafColor);
-    surface.setPixel(kTomatoCenterX, kLeafTop + 3, kLeafColor);
+    // The ellipse leaves a single pixel on its top row, which reads as a stray dot.
+    surface.setPixel(kTomatoCenterX - 1, body_top, shade(body_top, kFocusAccent));
+    surface.setPixel(kTomatoCenterX + 1, body_top, shade(body_top, kFocusAccent));
+
+    surface.setPixel(kTomatoCenterX, kLeafTop + 2, shade(kLeafTop + 2, kLeafColor));
+    surface.setPixel(kTomatoCenterX, kLeafTop + 3, shade(kLeafTop + 3, kLeafColor));
     for (int i = 1; i <= 3; ++i)
     {
-        surface.setPixel(kTomatoCenterX - i, kLeafTop + 3 - (i / 3), kLeafColor);
-        surface.setPixel(kTomatoCenterX + i, kLeafTop + 3 - (i / 3), kLeafColor);
+        const int y = kLeafTop + 3 - (i / 3);
+        surface.setPixel(kTomatoCenterX - i, y, shade(y, kLeafColor));
+        surface.setPixel(kTomatoCenterX + i, y, shade(y, kLeafColor));
+    }
+}
+
+void drawCup(Surface &surface, int x, int y, Color color)
+{
+    const Color steam = scaled(color, kSteamPercent);
+
+    for (int row = 0; row < kCupHeight; ++row)
+    {
+        const Color shade = row < kSteamRows ? steam : color;
+        for (int column = 0; column < kCupWidth; ++column)
+        {
+            if ((kCupRows[static_cast<std::size_t>(row)] & (1U << column)) != 0)
+            {
+                surface.setPixel(x + column, y + row, shade);
+            }
+        }
     }
 }
 
@@ -226,43 +329,30 @@ void PomodoroApp::render(Surface &surface)
 
     const float total = static_cast<float>(currentMinutes()) * 60.0F;
     const float shown = state_ == State::Setting ? total : remaining_;
-    const float fraction = total > 0.0F ? remaining_ / total : 0.0F;
+    const float progress =
+        state_ == State::Setting ? 1.0F : (total > 0.0F ? remaining_ / total : 0.0F);
 
     if (focus)
     {
-        drawTomato(surface, state_ == State::Setting ? 1.0F : fraction, kFocusAccent,
-                   kFocusPulpDim);
-        drawText(surface, kFocusColumnLeft, kLabelTop, "FOCUS", accent);
-
-        if (!blink_off)
-        {
-            const std::array<char, 8> text = formatTime(shown, false);
-            drawSpacedText(surface, kFocusColumnLeft, kDigitsTop, std::string_view{text.data()},
-                           digits, kDigitScale, kFocusDigitAdvance);
-        }
-
-        if (state_ != State::Setting)
-        {
-            drawBar(surface, kFocusColumnLeft, kFocusBarTop, surface.width() - kFocusColumnLeft,
-                    fraction, accent);
-        }
-        return;
+        drawTomato(surface, progress);
+    }
+    else
+    {
+        drawCup(surface, kCupLeft, kCupTop, accent);
     }
 
-    drawText(surface, kBreakLabelLeft, kLabelTop, "BREAK", accent);
+    drawText(surface, kColumnLeft, kLabelTop, focus ? "FOCUS" : "BREAK", accent);
+
+    // Only a running countdown changes its digits, so only there does the colon mark
+    // the second: on for the first half of each one, off for the second.
+    const bool colon_on = state_ != State::Running || std::fmod(shown, 1.0F) >= 0.5F;
 
     if (!blink_off)
     {
-        const std::array<char, 8> text = formatTime(shown, true);
-        const std::string_view view{text.data()};
-        const int x = (surface.width() - textWidth(view, kDigitScale)) / 2;
-        drawText(surface, x, kDigitsTop, view, digits, kDigitScale);
+        drawTime(surface, kColumnLeft, kDigitsTop, shown, digits, accent, colon_on);
     }
 
-    if (state_ != State::Setting)
-    {
-        drawBar(surface, 0, kBreakBarTop, surface.width(), fraction, accent);
-    }
+    drawBar(surface, kBarMargin, kBarTop, surface.width() - 2 * kBarMargin, progress, accent);
 }
 
 void PomodoroApp::startTimer(Mode mode)
