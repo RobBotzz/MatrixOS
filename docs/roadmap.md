@@ -125,11 +125,32 @@ Done, 2026-07-27:
 - [x] `systemd` unit in `pi-deployment/matrixos.service` (NFR-7), documented in
       [device-setup.md](device-setup.md).
 
-Known intermediate state: when an app is dropped the screen goes black, because FR-17 wants
-the user returned to the launcher and there is no launcher yet.
+Done, 2026-07-27 (second half of the day):
+
+- [x] `gfx/font` — one embedded 5x7 bitmap font, generated from the public-domain BDF shipped
+      with rpi-rgb-led-matrix by `tools/bdf_to_header.py`. The generator is checked in so the
+      numbers in `font5x7_data.h` are verifiable rather than magic.
+- [x] `os/launcher` — the app menu, itself an `App` (FR-15): rotating moves the selection,
+      pressing starts the entry, the selection stays on screen however long the list gets.
+      It knows the shell only through a callback.
+- [x] Shell: `Home` toggles between the launcher and the app it came from (FR-16). Switching
+      is deferred by one frame on purpose, so a request made from inside the launcher's own
+      `onInput` cannot exit an app that is still running.
+- [x] **FR-17 completed**: a dropped app now lands the user in the launcher instead of at a
+      black screen.
+- [x] `apps/testpattern` — the diagnostic frame became a normal app, so a panel can be checked
+      from the launcher and not only through a startup flag (ADR-0007). `--test-pattern` still
+      works and now shares the same code.
+- [x] 39 tests, all green. The launcher's scroll invariant, the font's bit order (an `L`
+      compared against ASCII art, which a mirrored font would fail) and the Home toggle are
+      each covered.
 
 Next, and the last piece of v0.1: the encoder and home-button backend on the pins from the
-resolved Q-1, the gesture recognizer (hardware-free and unit-tested), and the launcher.
+resolved Q-1, plus the gesture recognizer. Confirmed as feasible without any third-party
+dependency — `linux/gpio.h` is present in the aarch64 cross toolchain, so the kernel's GPIO v2
+character-device ABI can be used directly. Reading edge events rather than polling also answers
+Q-4: the kernel buffers transitions, so a 60 Hz poll of the event file descriptor cannot lose
+a detent and no extra thread is needed.
 
 ---
 

@@ -9,9 +9,10 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** pre-alpha. An animated app runs on the panel and in the terminal simulator, driven
-by the shell at 60 FPS. Still missing for v0.1: the encoder backend, gesture recognition and
-the launcher. See [docs/roadmap.md](docs/roadmap.md) for what is planned and in which order.
+**Status:** pre-alpha. Two apps and a launcher run on the panel and in the terminal simulator,
+driven by the shell at 60 FPS. Still missing for v0.1: the encoder and home-button backend, so
+the device is currently operated by keyboard. See [docs/roadmap.md](docs/roadmap.md) for what
+is planned and in which order.
 
 ## Documentation
 
@@ -77,10 +78,13 @@ ctest --test-dir build          # unit tests
 ./build/bin/MatrixOS            # runs the app in the terminal, Ctrl-C to quit
 ```
 
-Controls in the simulator: **arrow keys** rotate, **space** presses, **h** is the home button.
-`--test-pattern` shows a diagnostic frame instead of an app — a border, a corner marker and
-three colour gradients, so wrong geometry, a mirrored panel or a swapped channel order are
-visible at a glance.
+Controls: **arrow keys** rotate, **space** presses, **h** is the home button. `h` opens the
+launcher and takes you back to the app you came from.
+
+Two flags worth knowing: `--verbose` traces the input path event by event, and
+`--test-pattern` shows the diagnostic frame without starting the shell — a border, a corner
+marker and three colour gradients, so wrong geometry, a mirrored panel or a swapped channel
+order are visible at a glance. The same frame is also available as an app in the launcher.
 
 The host build does not need the submodule at all — it never compiles the LED library.
 

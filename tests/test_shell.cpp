@@ -131,6 +131,20 @@ std::function<bool()> stopAfter(const Shell &shell, unsigned long frames)
     return [&shell, frames] { return shell.frameCount() >= frames; };
 }
 
+/// Same, but records whether the launcher was on screen at the start of each
+/// frame. Inspecting the shell after `run()` returns would show nothing, because
+/// it deactivates everything on the way out — so the stop condition doubles as
+/// the observation point.
+std::function<bool()> stopAfterTracking(const Shell &shell, unsigned long frames,
+                                        std::vector<bool> &launcherPerFrame)
+{
+    return [&shell, frames, &launcherPerFrame]
+    {
+        launcherPerFrame.push_back(shell.launcherActive());
+        return shell.frameCount() >= frames;
+    };
+}
+
 } // namespace
 
 TEST_CASE("the shell activates the first app and ticks it once per frame")
@@ -211,7 +225,7 @@ TEST_CASE("Home is consumed by the shell and never reaches an app")
     CHECK(calls.received.empty());
 }
 
-TEST_CASE("an app that throws is dropped, the shell keeps running")
+TEST_CASE("an app that throws is dropped and the user lands in the launcher")
 {
     RecordingDisplay display;
     ScriptedInput input;
@@ -221,17 +235,79 @@ TEST_CASE("an app that throws is dropped, the shell keeps running")
     const ThrowingApp *observer = app.get();
     shell.add(std::move(app));
 
-    shell.run(stopAfter(shell, 4));
+    std::vector<bool> launcher_on;
+    shell.run(stopAfterTracking(shell, 4, launcher_on));
 
     // Survived all four frames instead of taking the process down (FR-17) ...
     CHECK(shell.frameCount() == 4);
     CHECK(display.presents == 4);
-    // ... the app is gone after its first failure ...
-    CHECK(shell.activeName().empty());
     // ... render was never reached, because update threw first ...
     CHECK(observer->renders == 0);
-    // ... and the screen is black until a launcher can take over.
-    CHECK(display.last_frame_was_black);
+    // ... and the launcher took over instead of leaving a black screen.
+    REQUIRE_FALSE(launcher_on.empty());
+    CHECK(launcher_on.back());
+    CHECK_FALSE(display.last_frame_was_black);
+}
+
+TEST_CASE("Home switches to the launcher and back to the app it came from")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls calls;
+
+    input.queue({{InputType::Home, 0}}); // frame 1: leave the app
+    input.queue({});                     // frame 2: launcher on screen
+    input.queue({{InputType::Home, 0}}); // frame 3: come back
+
+    Shell shell = makeShell(display, input);
+    shell.add(std::make_unique<SpyApp>(calls));
+
+    std::vector<bool> launcher_on;
+    shell.run(stopAfterTracking(shell, 4, launcher_on));
+
+    CHECK(calls.entered == 2); // once at startup, once on returning
+    CHECK(calls.exited == 2);  // once on leaving, once at shutdown
+    CHECK(calls.updates == 2); // only the frames where it was actually active
+
+    REQUIRE(launcher_on.size() >= 4);
+    CHECK_FALSE(launcher_on[0]);     // the app is on screen at the start
+    CHECK(launcher_on[1]);           // the first Home moved to the launcher
+    CHECK_FALSE(launcher_on.back()); // the second Home came back
+}
+
+TEST_CASE("the launcher starts the app the user selected")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls second;
+
+    input.queue({{InputType::Home, 0}});    // to the launcher
+    input.queue({{InputType::Rotate, +1}}); // select the second entry
+    input.queue({{InputType::Press, 0}});   // start it
+
+    Shell shell = makeShell(display, input);
+    shell.add(std::make_unique<SpyApp>(first));
+    shell.add(std::make_unique<SpyApp>(second));
+    shell.run(stopAfter(shell, 5));
+
+    CHECK(first.entered == 1);  // started at boot, never returned to
+    CHECK(second.entered == 1); // started from the launcher
+    CHECK(second.updates >= 1);
+    CHECK_FALSE(shell.launcherActive());
+}
+
+TEST_CASE("Home does nothing harmful before any app has run")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+
+    // No apps at all: run() bails out, so Home can never even be dispatched.
+    Shell shell = makeShell(display, input);
+    input.queue({{InputType::Home, 0}});
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(shell.frameCount() == 0);
 }
 
 TEST_CASE("with no apps registered the shell does nothing at all")

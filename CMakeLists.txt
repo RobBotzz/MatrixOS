@@ -76,9 +76,12 @@ endif()
 
 add_library(matrixos_core STATIC
     src/gfx/surface.cpp
+    src/gfx/font.cpp
     src/os/log.cpp
     src/os/shell.cpp
+    src/os/launcher.cpp
     src/apps/plasma/plasma.cpp
+    src/apps/testpattern/test_pattern.cpp
 )
 target_include_directories(matrixos_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(matrixos_core
@@ -143,7 +146,9 @@ if(MATRIXOS_BUILD_TESTS)
 
     add_executable(matrixos_tests
         tests/test_surface.cpp
+        tests/test_font.cpp
         tests/test_shell.cpp
+        tests/test_launcher.cpp
         tests/test_plasma.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE

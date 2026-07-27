@@ -14,6 +14,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace matrixos
@@ -22,8 +23,8 @@ namespace matrixos
 class Display;
 class Input;
 
-/// The shell around one active app: it owns the loop, the app lifecycle and the
-/// back buffer (ADR-0003).
+/// The shell around one active app: it owns the loop, the app lifecycle, the
+/// launcher and the back buffer (ADR-0003).
 ///
 /// One process, one thread for our code, apps as objects. "Cooperative" means
 /// nothing preempts an app — it returns control by returning from `update()` or
@@ -37,7 +38,7 @@ public:
     Shell(Display &display, Input &input, Duration targetFrameTime = kDefaultFrameTime);
 
     /// Apps are registered once at startup and owned by the shell — compiled in,
-    /// never loaded dynamically (NG4).
+    /// never loaded dynamically (NG4). Registration order is launcher order.
     void add(std::unique_ptr<App> app);
 
     /// Ticks the active app until `shouldStop` returns true, then leaves the
@@ -47,13 +48,29 @@ public:
 
     unsigned long frameCount() const { return frames_; }
 
-    /// Name of the active app, or an empty view if none is (a dropped app leaves
-    /// none until the launcher exists).
+    /// Name of the active app, or an empty view if none is.
     std::string_view activeName() const;
 
+    bool launcherActive() const;
+
 private:
-    void activate(std::size_t index);
+    /// What the next frame should switch to. Switching is deferred by one frame
+    /// on purpose: the request usually comes from inside the launcher's own
+    /// onInput, and activating there would exit the app that is still running.
+    enum class Target
+    {
+        None,
+        Launcher,
+        App,
+    };
+
+    void buildLauncher();
+    void applyPending();
+    void activateApp(std::size_t index);
+    void activateLauncher();
+    void setActive(App *app);
     void deactivate();
+    void requestHome();
     void dispatch(const InputEvent &event);
     void reportFailure(const char *stage, const char *what);
 
@@ -84,7 +101,13 @@ private:
     Duration target_frame_time_;
 
     std::vector<std::unique_ptr<App>> apps_;
+    std::unique_ptr<App> launcher_;
     App *active_ = nullptr;
+
+    Target pending_ = Target::None;
+    std::size_t pending_index_ = 0;
+    std::optional<std::size_t> last_app_;
+
     Surface frame_;
     unsigned long frames_ = 0;
 };
