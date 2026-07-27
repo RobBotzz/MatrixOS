@@ -1,5 +1,5 @@
 set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR arm)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
 
 #Avoid including/loading native libraries (Important when cross-compiling)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

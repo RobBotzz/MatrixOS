@@ -31,18 +31,15 @@ jobs:
       - name: Build Project
         run: cmake --build build-pi
 
+      # Guards against a silently wrong toolchain: a host-architecture binary
+      # would build fine here and then refuse to run on the Pi.
+      - name: Verify Target Architecture
+        run: |
+          file build-pi/bin/MatrixOS
+          file build-pi/bin/MatrixOS | grep -q 'ARM aarch64'
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: pi-zero-executable
           path: build-pi/bin/
-
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Execute Unit-tests
-        run: |
-          echo "========================================="
-          echo "TODO: Configure automatic testing later!"
-          echo "========================================="

@@ -3,9 +3,9 @@
   "configurePresets": [
     {
       "name": "default",
-      "description": "Default Windows Build (MinGW)",
+      "description": "Host build on the development machine (x86 Linux / WSL)",
       "hidden": false,
-      "generator": "MinGW Makefiles",
+      "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -15,31 +15,26 @@
     {
       "name": "pi-zero-base",
       "hidden": true,
-      "description": "Preset basis for pi-zero builds",
+      "description": "Shared basis for aarch64 cross-builds (Pi Zero 2 W, 64-bit OS)",
+      "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build-pi",
       "toolchainFile": "${sourceDir}/pi-toolchain.cmake",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++"
       }
     },
     {
-      "name": "pi-zero-win",
+      "name": "pi-zero",
       "inherits": "pi-zero-base",
-      "description": "Cross-compile on windows system",
-      "generator": "MinGW Makefiles",
-      "cacheVariables": {
-        "CMAKE_C_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-gcc.exe REPLACE WITH ARCH x64 COMPILER",
-        "CMAKE_CXX_COMPILER": "C:/SysGCC/raspberry/bin/arm-linux-gnueabihf-g++.exe REPLACE WITH ARCH x64 COMPILER"
-      }
+      "description": "Cross-compile for the Pi on the development machine"
     },
     {
       "name": "pi-zero-ci",
       "inherits": "pi-zero-base",
-      "description": "GitHub Actions build",
-      "generator": "Unix Makefiles",
+      "description": "Cross-compile in GitHub Actions, with ccache",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
-        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
       }

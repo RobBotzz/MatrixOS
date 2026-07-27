@@ -1,0 +1,23 @@
+# Formatting for MatrixOS's own sources. external/ is vendored and stays untouched.
+# Derived from the style already present in the repository: 4 spaces, Allman braces.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+BreakBeforeBraces: Allman
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+IncludeBlocks: Preserve
+SortIncludes: true
+
+SpaceAfterCStyleCast: true
