@@ -9,9 +9,9 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** pre-alpha. Infrastructure (build, cross-compile, CI, deploy) exists; the
-application itself is being built. See [docs/roadmap.md](docs/roadmap.md) for what is
-planned and in which order.
+**Status:** pre-alpha. The display path and the terminal simulator work on both targets;
+the shell, input handling and the first app are next. See
+[docs/roadmap.md](docs/roadmap.md) for what is planned and in which order.
 
 ## Documentation
 
@@ -38,7 +38,11 @@ The panel is driven through [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-
 ## Repository layout
 
 ```
-main.cpp             entry point
+src/
+  main.cpp           composition root: picks the backends, runs
+  gfx/               Surface, colour — a plain RGB pixel buffer
+  hal/               Display interface + two backends (matrix, sim)
+tests/               host-only unit tests (Catch2)
 external/            vendored dependencies (rpi-rgb-led-matrix submodule)
 pi-deployment/       scripts to pull a build onto the device
 docs/                requirements, architecture, decisions, roadmap
@@ -66,7 +70,11 @@ be developed and tested without the Pi. See
 ```bash
 cmake --preset default
 cmake --build build
+ctest --test-dir build          # unit tests
+./build/bin/MatrixOS            # draws a test pattern in the terminal, Ctrl-C to quit
 ```
+
+The host build does not need the submodule at all — it never compiles the LED library.
 
 ### Cross-compile for the Pi
 
@@ -85,8 +93,12 @@ preset plus `ccache`, so a green CI run means this build works too.
 The matrix library requires root (it maps `/dev/mem` for GPIO and DMA access):
 
 ```bash
-sudo ./MatrixOS --led-cols=64 --led-rows=32 --led-chain=1
+sudo ./MatrixOS
 ```
+
+Panel geometry for one 64x32 panel with `regular` wiring is compiled in as the default; the
+library's `--led-*` flags override it. `--simulate` forces the terminal backend even on the
+Pi, which is useful over SSH.
 
 Device-level tuning (disabling onboard sound, isolating a CPU core, GPIO slowdown) is
 documented in [docs/requirements.md](docs/requirements.md) under platform constraints.
@@ -107,6 +119,8 @@ see [ADR-0005](docs/adr/0005-deployment-model.md).
 
 ## License
 
-**To be decided.** MatrixOS statically links rpi-rgb-led-matrix, which is GPLv2. Any
-distributed build is therefore a derived work and must be released under a GPLv2-compatible
-license. Pick one before the repository goes public.
+**GPL-2.0** — see [LICENSE](LICENSE).
+
+MatrixOS statically links rpi-rgb-led-matrix, whose source headers place it under the GNU
+GPL "version 2" with no "or later" clause. A distributed build is therefore a derived work,
+which rules out GPLv3 and makes GPL-2.0 the licence that works.

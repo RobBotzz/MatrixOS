@@ -83,9 +83,29 @@ Inconsistencies that existed before this milestone started, cleared on 2026-07-2
 - [x] `.clang-format` added, derived from the style already in the repository — 4 spaces,
       Allman braces (NFR-15).
 
-Still open in this milestone: the `LICENSE` file (GPL-2.0, see the resolved Q-5), and the CI
-jobs for the host build, tests, and the format check — those arrive with the source
-restructure, since there is nothing to test or format-check until then.
+### Progress
+
+Done, 2026-07-26:
+
+- [x] `LICENSE` (GPL-2.0, see the resolved Q-5).
+- [x] Source tree moved to `src/`, `CMakeLists.txt` split into the targets from
+      [architecture.md §6.1](architecture.md#61-build-targets) with `aarch64` auto-detection.
+      `matrixos_core` deliberately does not link the LED library, so the layering is enforced
+      by the compiler.
+- [x] `Surface` and `Color` — the plain RGB24 buffer apps will draw into (FR-2, FR-3).
+- [x] `Display` interface with the terminal simulator backend (ANSI half-blocks) and the LED
+      panel backend using `FrameCanvas` + `SwapOnVSync`.
+- [x] Catch2 v3 via FetchContent, host-only; 7 tests over `Surface`, all green.
+- [x] `main.cpp` as composition root, drawing a diagnostic test pattern — border, corner
+      marker and three colour gradients, so wrong geometry, a mirrored panel or a swapped
+      channel order are visible at a glance. Verified in the simulator.
+- [x] CI in three jobs: formatting (pinned `clang-format` 21.1.8), host build with tests, and
+      the aarch64 cross build with an architecture assertion. The host job intentionally does
+      not check out the submodule — if it ever needs it, the layering broke.
+
+Next: the shell (tick loop, app lifecycle, exception boundary), the input HAL with the
+gesture recognizer, the launcher, and the Plasma app. The test pattern gets replaced by the
+real render loop at that point.
 
 ---
 

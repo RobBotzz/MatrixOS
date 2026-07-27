@@ -1,4 +1,4 @@
-name: Raspberry Pi Zero Build
+name: CI
 
 on:
   push:
@@ -7,7 +7,44 @@ on:
     branches: ["main"]
 
 jobs:
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      # Pinned to an exact version so this check can never disagree with a
+      # developer running clang-format locally.
+      - name: Install clang-format
+        run: pipx install clang-format==21.1.8
+
+      - name: Check Formatting
+        run: |
+          clang-format --version
+          clang-format --dry-run --Werror $(find src tests -name '*.cpp' -o -name '*.h')
+
+  host:
+    name: Host Build and Tests
+    runs-on: ubuntu-latest
+    steps:
+      # Submodules are deliberately NOT checked out: the host build must not need
+      # the LED matrix library at all (ADR-0002). If this job ever starts failing
+      # for a missing submodule, the layering has broken.
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Configure CMake
+        run: cmake --preset default
+
+      - name: Build Project
+        run: cmake --build build --parallel
+
+      - name: Execute Unit-tests
+        run: ctest --test-dir build --output-on-failure
+
   build:
+    name: Cross Build for Pi Zero 2 W
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -29,7 +66,7 @@ jobs:
         run: cmake --preset pi-zero-ci
 
       - name: Build Project
-        run: cmake --build build-pi
+        run: cmake --build build-pi --parallel
 
       # Guards against a silently wrong toolchain: a host-architecture binary
       # would build fine here and then refuse to run on the Pi.

@@ -13,7 +13,12 @@ BreakBeforeBraces: Allman
 PointerAlignment: Right
 DerivePointerAlignment: false
 
-AllowShortFunctionsOnASingleLine: Empty
+# With a 4-space indent, access specifiers belong at column 0.
+AccessModifierOffset: -4
+
+# "Inline" keeps trivial accessors defined inside a class on one line, while free
+# functions still get the Allman treatment.
+AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 

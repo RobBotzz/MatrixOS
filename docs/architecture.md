@@ -267,6 +267,7 @@ tests/
 | `MatrixOS`            | `main.cpp` + the backends available for this target   | both                                  |
 | `matrixos_tests`      | `tests/` against `matrixos_core`                      | host only                             |
 | `matrixos_net`        | embedded HTTP server, mDNS (from v0.4)                | host + Pi                             |
+| `matrixos_warnings`   | INTERFACE target carrying `-Wall -Wextra -Wpedantic`  | both, our sources only                |
 
 Splitting the backend out of the main library keeps the host build free of a GPLv2 library it
 cannot run anyway, and keeps `matrixos_core` — the part under test — independent of it.

@@ -21,6 +21,22 @@ risk to that, not a free win.
 ## Decision
 
 MatrixOS is a **single process** with **one active app** and a **cooperative tick loop**.
+
+To be concrete about what that means, because "cooperative" is a term of art that suggests
+more than is intended here: there is one process and, for our own code, one thread. An app is
+a C++ object, not an operating-system process, and the tick loop is a `while` loop in `main()`
+that calls methods on the active app object. **Cooperative** means *not preemptive* — nothing
+takes the CPU away from an app; it returns control by returning from `update()` or `render()`.
+It does **not** mean cooperative multitasking between apps: only one app ticks at all (NG2).
+
+The rule that follows for app authors: `update()` and `render()` must return inside the frame
+budget — no sleeping, no blocking I/O, no waiting on the network. An app that blocks freezes
+the whole device.
+
+The process is nevertheless multi-threaded, just not by our doing: rpi-rgb-led-matrix starts
+its own high-priority thread that refreshes the panel from the framebuffer (the reason for
+C-3), and a platform-owned fetch thread will later serve network apps (FR-27). Neither is
+visible to app code.
 Apps are compiled in, registered at startup, and implement one interface
 (`onEnter`/`onExit`/`onInput`/`update(dt)`/`render(Surface&)`). Inactive apps receive no
 ticks. There is no scheduler, no per-app process, no dynamic loading, no scripting layer.
