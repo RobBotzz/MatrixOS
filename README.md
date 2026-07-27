@@ -9,9 +9,9 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** pre-alpha. The display path and the terminal simulator work on both targets;
-the shell, input handling and the first app are next. See
-[docs/roadmap.md](docs/roadmap.md) for what is planned and in which order.
+**Status:** pre-alpha. An animated app runs on the panel and in the terminal simulator, driven
+by the shell at 60 FPS. Still missing for v0.1: the encoder backend, gesture recognition and
+the launcher. See [docs/roadmap.md](docs/roadmap.md) for what is planned and in which order.
 
 ## Documentation
 
@@ -20,6 +20,7 @@ the shell, input handling and the first app are next. See
 | [docs/requirements.md](docs/requirements.md) | Functional and non-functional requirements, scope boundaries |
 | [docs/architecture.md](docs/architecture.md) | Module structure, app model, data flow |
 | [docs/roadmap.md](docs/roadmap.md) | Release plan and the app backlog |
+| [docs/device-setup.md](docs/device-setup.md) | Every manual step applied to a device, and why |
 | [docs/adr/](docs/adr/) | Architecture decision records — why things are the way they are |
 
 ## Hardware
@@ -40,8 +41,10 @@ The panel is driven through [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-
 ```
 src/
   main.cpp           composition root: picks the backends, runs
+  os/                the shell: tick loop, app lifecycle, logging
   gfx/               Surface, colour — a plain RGB pixel buffer
-  hal/               Display interface + two backends (matrix, sim)
+  hal/               Display and Input interfaces + backends (matrix, sim)
+  apps/              the apps themselves
 tests/               host-only unit tests (Catch2)
 external/            vendored dependencies (rpi-rgb-led-matrix submodule)
 pi-deployment/       scripts to pull a build onto the device
@@ -71,8 +74,13 @@ be developed and tested without the Pi. See
 cmake --preset default
 cmake --build build
 ctest --test-dir build          # unit tests
-./build/bin/MatrixOS            # draws a test pattern in the terminal, Ctrl-C to quit
+./build/bin/MatrixOS            # runs the app in the terminal, Ctrl-C to quit
 ```
+
+Controls in the simulator: **arrow keys** rotate, **space** presses, **h** is the home button.
+`--test-pattern` shows a diagnostic frame instead of an app — a border, a corner marker and
+three colour gradients, so wrong geometry, a mirrored panel or a swapped channel order are
+visible at a glance.
 
 The host build does not need the submodule at all — it never compiles the LED library.
 

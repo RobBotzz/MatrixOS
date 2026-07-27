@@ -103,9 +103,33 @@ Done, 2026-07-26:
       the aarch64 cross build with an architecture assertion. The host job intentionally does
       not check out the submodule — if it ever needs it, the layering broke.
 
-Next: the shell (tick loop, app lifecycle, exception boundary), the input HAL with the
-gesture recognizer, the launcher, and the Plasma app. The test pattern gets replaced by the
-real render loop at that point.
+Done, 2026-07-27:
+
+- [x] `hal/input.h` — the event vocabulary from FR-8 after ADR-0009: `Rotate`, `Press`,
+      `DoublePress`, `LongPress`, `Home`. No `VeryLongPress`.
+- [x] `os/app.h` — the App interface: `onEnter`, `onExit`, `onInput`, `update(dt)`,
+      `render(Surface&)`.
+- [x] `os/log` — leveled logging. Everything goes to **stderr**, because the terminal
+      simulator owns stdout and one stray log line would corrupt the picture.
+- [x] `os/shell` — tick loop with frame pacing (measured: exactly 60 frames per second),
+      app lifecycle, and the exception boundary from FR-17. The stop condition is injected,
+      which is what lets a test run an exact number of frames.
+- [x] `hal/sim/keyboard_input` — arrow keys rotate, space presses, `h` is home. Degrades to
+      producing no events when stdin is not a terminal, so it is harmless as a service.
+- [x] `apps/plasma` — four animated variants; rotating switches them, pressing freezes the
+      animation. Both chosen so the whole input path is visible at a glance.
+- [x] The test pattern survives as `--test-pattern`: with several devices to build, every
+      panel needs checking once without depending on a running app.
+- [x] 21 tests, all green — including "an app that throws is dropped and the shell keeps
+      running" and "Home never reaches an app".
+- [x] `systemd` unit in `pi-deployment/matrixos.service` (NFR-7), documented in
+      [device-setup.md](device-setup.md).
+
+Known intermediate state: when an app is dropped the screen goes black, because FR-17 wants
+the user returned to the launcher and there is no launcher yet.
+
+Next, and the last piece of v0.1: the encoder and home-button backend on the pins from the
+resolved Q-1, the gesture recognizer (hardware-free and unit-tested), and the launcher.
 
 ---
 

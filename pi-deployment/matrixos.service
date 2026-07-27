@@ -1,0 +1,54 @@
+# systemd unit for MatrixOS. Install with:
+#
+#   sudo cp matrixos.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now matrixos
+#
+# Satisfies NFR-7 (starts on boot, restarts if it exits) and relies on the
+# SIGTERM handler in main.cpp to leave the panel dark on stop (FR-4).
+
+[Unit]
+Description=MatrixOS LED matrix application
+Documentation=https://github.com/RobBotzz/MatrixOS
+
+# Deliberately no network ordering: no app needs the network yet, and waiting
+# for network-online would delay the first picture (NFR-8: visible within 30 s).
+# Add After/Wants=network-online.target when the first network app arrives.
+
+[Service]
+Type=simple
+
+# Path must match DEST_FOLDER in deploy.sh. ADR-0005 moves this to
+# /opt/matrixos/current/MatrixOS once versioned releases exist.
+ExecStart=/home/robin/MatrixOS/build/MatrixOS
+
+# Runs as root because the matrix library maps /dev/mem directly (C-2).
+# The library drops privileges to the "daemon" user itself after GPIO init.
+
+Restart=always
+RestartSec=2
+
+# Never stop trying. The default would give up after 5 restarts in 10 s, and a
+# device standing in someone's living room has no one to run systemctl on it
+# (C-10). A crash loop is visible on the panel and in the journal.
+StartLimitIntervalSec=0
+
+# Our loop checks the signal flag every 50 ms, so stopping is quick.
+TimeoutStopSec=10
+
+# stdout/stderr go to the journal, which is what FR-21 is written for:
+#   journalctl -u matrixos
+# Note that ADR-0008 configures journald as volatile, so these logs live in RAM
+# and disappear on reboot.
+
+# Two things deliberately NOT set:
+#
+#   CPUAffinity=   would confine the whole process, including the library's
+#                  refresh thread, which needs to pin itself to the isolated
+#                  core 3. Setting this breaks the timing it protects.
+#
+#   PrivateDevices=, ProtectSystem=strict and similar hardening options block
+#                  access to /dev/mem and stop the service from working at all.
+
+[Install]
+WantedBy=multi-user.target

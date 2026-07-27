@@ -76,9 +76,15 @@ endif()
 
 add_library(matrixos_core STATIC
     src/gfx/surface.cpp
+    src/os/log.cpp
+    src/os/shell.cpp
+    src/apps/plasma/plasma.cpp
 )
 target_include_directories(matrixos_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(matrixos_core PRIVATE matrixos_warnings)
+target_link_libraries(matrixos_core
+    PUBLIC Threads::Threads   # the shell sleeps between frames
+    PRIVATE matrixos_warnings
+)
 
 # =============================================================================
 # HAL backends
@@ -86,6 +92,7 @@ target_link_libraries(matrixos_core PRIVATE matrixos_warnings)
 
 add_library(matrixos_hal_sim STATIC
     src/hal/sim/terminal_display.cpp
+    src/hal/sim/keyboard_input.cpp
 )
 target_link_libraries(matrixos_hal_sim
     PUBLIC matrixos_core
@@ -136,6 +143,8 @@ if(MATRIXOS_BUILD_TESTS)
 
     add_executable(matrixos_tests
         tests/test_surface.cpp
+        tests/test_shell.cpp
+        tests/test_plasma.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

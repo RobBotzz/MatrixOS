@@ -242,8 +242,8 @@ v0.1 is done when all of the following hold:
 | ID  | Question                                                                                                                                                                       | Needed by          |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
 | Q-1 | ~~Which GPIO pins remain free for the encoder?~~ **Answered — see Resolved below.** What remains for the spike: confirm the chosen pins behave on the actual board. | v0.1 spike         |
-| Q-2 | What `--led-slowdown-gpio` value does this panel need on a Zero 2 W? Expected 1–2.                                                                                             | v0.1 spike         |
-| Q-3 | What is the panel's multiplex/scan type? Most 64x32 panels are 1/16 scan and need no address-type override, but this must be confirmed for the actual unit.                    | v0.1 spike         |
+| Q-2 | ~~What `--led-slowdown-gpio` value does this panel need?~~ **Answered — see Resolved below.**                                                                                             | v0.1 spike         |
+| Q-3 | ~~What is the panel's multiplex/scan type?~~ **Answered — see Resolved below.**                    | v0.1 spike         |
 | Q-4 | Encoder reading strategy: poll in the main loop, poll in a dedicated thread, or use libgpiod edge events? Affects NFR-3 and must not violate C-3.                              | v0.1 spike         |
 | Q-5 | ~~Which license?~~ **Answered — see Resolved below.** Remaining action: add the `LICENSE` file (acceptance criterion 8). | v0.1 |
 | Q-6 | In-process HTTP client vs. separate service for network apps. Deliberately deferred, see [ADR-0004](adr/0004-network-app-runtime.md).                                          | first network app  |
@@ -280,3 +280,35 @@ justifications (see [ADR-0002](adr/0002-display-abstraction-and-simulator.md)).
 code was written. `VeryLongPress` is gone from the vocabulary, `LongPress` fires while the
 button is held, and the button's only job is toggling between app and launcher. See
 [ADR-0009](adr/0009-dedicated-home-button.md), which supersedes ADR-0006.
+
+**Q-2 — GPIO slowdown.** No flag needed. On a Zero 2 W the library's own default is already
+the fastest setting (`gpio_slowdown(GPIO::IsPi4() ? 2 : 1)` in `lib/options-initialize.cc`),
+and values 1 and 2 produced no visible difference on this panel — so the panel tolerates the
+full speed and there is nothing to compensate for. The mechanism being tuned is a busy-wait
+that repeats a no-op register write to stretch each clock pulse (`lib/gpio.h`).
+
+Measured afterwards with `--led-show-refresh`: the refresh rate **is** noticeably better at 1
+than at higher values. So the parameter does take effect — it simply has no *visible* effect
+on a still image, which is exactly the weakness predicted for a static test pattern. The
+conclusion stands and is now backed by a measurement rather than an impression: leave the flag
+off and keep the default of 1, because a higher refresh rate means less flicker and more
+usable brightness.
+
+Still to confirm once the animation runs on the panel: whether the refresh rate the default
+gives is enough for flicker-free rendering (NFR-5). A moving image reveals timing problems a
+still one hides.
+
+**Device setup steps** for the matrix timing prerequisites of C-3 — sound disabled, module
+blacklisted, `isolcpus=3` — are recorded in [device-setup.md](device-setup.md), which is the
+source material for `provision.sh` in v0.4.
+
+**Q-3 — panel scan type.** No override needed. The `--test-pattern` frame rendered correctly
+on the first try: border closed on all four sides, corner marker in the top-left, colour bands
+in red / green / blue order. That rules out a wrong scan type, a mirrored or rotated panel and
+a swapped channel order in one look, so neither `--led-multiplexing` nor
+`--led-row-addr-type` nor `--led-rgb-sequence` is required. This is what the test pattern was
+designed to answer.
+
+**Q-1, remaining half.** The panel pins are confirmed working by the above. The pins reserved
+for the encoder (5 / 6 / 13) and the home button (19) are still unwired and therefore
+unverified on real hardware.

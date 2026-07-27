@@ -4,11 +4,15 @@
 // the terms of the GNU General Public License, version 2, as published by the
 // Free Software Foundation. See LICENSE for details.
 //
-// Composition root: the only place that knows which display backends exist.
+// Composition root: the only place that knows which backends exist.
 
+#include "apps/plasma/plasma.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
+#include "hal/sim/keyboard_input.h"
 #include "hal/sim/terminal_display.h"
+#include "os/log.h"
+#include "os/shell.h"
 
 #ifdef MATRIXOS_HAS_MATRIX
 #include "hal/matrix/matrix_display.h"
@@ -48,6 +52,10 @@ bool hasFlag(int argc, char *argv[], const char *flag)
 }
 
 /// A frame that makes geometry, orientation and channel order obvious at a glance.
+///
+/// Kept as a mode of its own rather than deleted: when several devices are built,
+/// every panel needs checking once, and doing that without depending on a running
+/// app is worth the few lines.
 void drawTestPattern(matrixos::Surface &surface)
 {
     using matrixos::Color;
@@ -98,11 +106,33 @@ void drawTestPattern(matrixos::Surface &surface)
     }
 }
 
+/// Holds a still image until asked to stop. No shell, no apps.
+int runTestPattern(matrixos::Display &display)
+{
+    matrixos::Surface frame(display.width(), display.height());
+    drawTestPattern(frame);
+    display.present(frame);
+
+    while (g_interrupted == 0)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    display.clear();
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
 {
     [[maybe_unused]] const bool force_simulator = hasFlag(argc, argv, "--simulate");
+    const bool test_pattern = hasFlag(argc, argv, "--test-pattern");
+
+    if (hasFlag(argc, argv, "--verbose"))
+    {
+        matrixos::logSetLevel(matrixos::LogLevel::Debug);
+    }
 
     std::unique_ptr<matrixos::Display> display;
 
@@ -122,16 +152,16 @@ int main(int argc, char *argv[])
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    matrixos::Surface frame(display->width(), display->height());
-    drawTestPattern(frame);
-    display->present(frame);
-
-    // There is no shell loop yet: hold the pattern until asked to stop.
-    while (g_interrupted == 0)
+    if (test_pattern)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return runTestPattern(*display);
     }
 
-    display->clear(); // leave the panel dark (FR-4)
+    matrixos::KeyboardInput input;
+
+    matrixos::Shell shell(*display, input);
+    shell.add(std::make_unique<matrixos::PlasmaApp>());
+    shell.run([] { return g_interrupted != 0; });
+
     return 0;
 }
