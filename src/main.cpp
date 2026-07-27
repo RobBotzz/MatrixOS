@@ -86,6 +86,32 @@ int main(int argc, char *argv[])
         matrixos::logSetLevel(matrixos::LogLevel::Debug);
     }
 
+    // Input is claimed before the display, and the order matters: the matrix
+    // library drops privileges from root to 'daemon' once the panel is
+    // initialised, after which /dev/gpiochip0 can no longer be opened. An
+    // already-open descriptor keeps working, so claiming the lines first is enough.
+    std::unique_ptr<matrixos::Input> input;
+
+    if (!test_pattern)
+    {
+#ifdef MATRIXOS_HAS_PI_HARDWARE
+        // --keyboard keeps the panel but takes input from stdin, which is how the
+        // device can be driven over SSH.
+        if (!force_keyboard)
+        {
+            input = matrixos::EncoderInput::create();
+            if (!input)
+            {
+                matrixos::logWarn("encoder unavailable, falling back to the keyboard");
+            }
+        }
+#endif
+        if (!input)
+        {
+            input = std::make_unique<matrixos::KeyboardInput>();
+        }
+    }
+
     std::unique_ptr<matrixos::Display> display;
 
 #ifdef MATRIXOS_HAS_PI_HARDWARE
@@ -116,27 +142,6 @@ int main(int argc, char *argv[])
     if (test_pattern)
     {
         return runTestPattern(*display);
-    }
-
-    std::unique_ptr<matrixos::Input> input;
-
-#ifdef MATRIXOS_HAS_PI_HARDWARE
-    // --keyboard keeps the panel but takes input from stdin, which is how the
-    // device can be driven over SSH — useful before the encoder is wired, and for
-    // checking whether a fault is in the GPIO layer or above it.
-    if (!force_keyboard)
-    {
-        input = matrixos::EncoderInput::create();
-        if (!input)
-        {
-            matrixos::logWarn("encoder unavailable, falling back to the keyboard");
-        }
-    }
-#endif
-
-    if (!input)
-    {
-        input = std::make_unique<matrixos::KeyboardInput>();
     }
 
     matrixos::Shell shell(*display, *input);
