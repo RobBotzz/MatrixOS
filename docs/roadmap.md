@@ -145,12 +145,28 @@ Done, 2026-07-27 (second half of the day):
       compared against ASCII art, which a mirrored font would fail) and the Home toggle are
       each covered.
 
-Next, and the last piece of v0.1: the encoder and home-button backend on the pins from the
-resolved Q-1, plus the gesture recognizer. Confirmed as feasible without any third-party
-dependency — `linux/gpio.h` is present in the aarch64 cross toolchain, so the kernel's GPIO v2
-character-device ABI can be used directly. Reading edge events rather than polling also answers
-Q-4: the kernel buffers transitions, so a 60 Hz poll of the event file descriptor cannot lose
-a detent and no extra thread is needed.
+Done, 2026-07-27 (the encoder):
+
+- [x] `hal/quadrature` — the two encoder signals to detents, via a transition table over the
+      Gray-code ring. Bounce cancels itself out and physically impossible transitions are
+      discarded. Hardware-free, 10 tests.
+- [x] `hal/gestures` — button transitions plus timestamps to `Press` and `LongPress`, with
+      debouncing. Takes the time as an argument rather than reading a clock, so 11 tests feed
+      synthetic instants and none of them waits or flakes.
+- [x] `hal/pi/encoder_input` — the GPIO v2 character device with kernel edge events. Answers
+      Q-4, and needs no third-party library at all.
+- [x] `hal/matrix/` renamed to `hal/pi/`, target `matrixos_hal_pi`: there are now two Pi
+      backends and only one of them has anything to do with the LED library.
+- [x] `--keyboard` keeps the panel but takes input from stdin, so the device stays drivable
+      over SSH — useful for telling a GPIO fault from a fault above it.
+- [x] 59 tests, all green.
+
+`DoublePress` is deliberately not produced by default; the reasoning is with Q-4 in
+[requirements.md](requirements.md).
+
+**Not verified on hardware.** The decoding and timing logic is tested, but the ioctl layer
+cannot be exercised without an encoder wired to GPIO 5/6/13 and a button on 19. That is the
+last open item of v0.1 — acceptance criteria 3 and 4.
 
 ---
 

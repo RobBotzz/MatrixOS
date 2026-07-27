@@ -29,7 +29,7 @@ MatrixOS is a **shell around one active app**, with hardware behind a thin abstr
                                                   │
                               ┌───────────────────┴───────────────────┐
                               │                                       │
-                     hal/matrix/ (Pi only)                     hal/sim/ (host)
+                         hal/pi/ (Pi only)                     hal/sim/ (host)
                      rpi-rgb-led-matrix                 terminal output + keyboard
 ```
 
@@ -145,10 +145,24 @@ button ([ADR-0009](adr/0009-dedicated-home-button.md)).
 it is never forwarded to an app (FR-16). The encoder's own button belongs entirely to the
 active app.
 
-Which pins are used and whether they are polled or watched via libgpiod is confined entirely
-to `hal/`. Q-1 answered the pin question — encoder on GPIO 5/6/13, home button on 19 — and
-Q-4 (polling vs. libgpiod edge events) is still open, but answering it later changes nothing
-above this line.
+Below the event stream sit two hardware-free components and one thin layer that is not:
+
+| | |
+| --- | --- |
+| `hal/quadrature` | the two phase-shifted encoder signals to detents. Bounce cancels itself out because a line flickering back and forth adds and subtracts from the same accumulator. |
+| `hal/gestures` | button transitions plus timestamps to `Press` and `LongPress`. |
+| `hal/pi/encoder_input` | the GPIO character device. Not testable without hardware, which is why so little lives here. |
+
+Q-1 settled the pins — encoder on GPIO 5/6/13, home button on 19 — and Q-4 settled the reading
+strategy: **kernel edge events, not polled levels**. The kernel timestamps every transition and
+buffers them, so reading the descriptor once per frame cannot lose a detent however fast the
+knob is turned, and no extra thread is needed. Polling levels at 60 Hz would miss transitions
+and break FR-9.
+
+`DoublePress` exists in the vocabulary but the recognizer does not produce it by default.
+Confirming a single press means waiting out the window for a second one, which would delay
+every press by ~300 ms — a cost no current app justifies. Enabling it is one field in
+`GestureRecognizer::Timing`, and the behaviour is already tested both ways.
 
 ---
 
@@ -242,9 +256,10 @@ src/
   hal/
     display.h             interface
     input.h               interface + event types
-    gestures.{h,cpp}      hardware-free press/rotation recognition
-    matrix/               LED panel backend         (aarch64 build only)
-    sim/                  terminal + keyboard backend (host build only)
+    gestures.{h,cpp}      hardware-free button timing
+    quadrature.{h,cpp}    hardware-free encoder decoding
+    pi/                   LED panel + encoder        (aarch64 build only)
+    sim/                  terminal + keyboard        (host build only)
   net/                    platform infrastructure   (from v0.4, see §9)
     http_server.{h,cpp}   setup portal, config page, OAuth callback, later uploads
     mdns.{h,cpp}          stable name on the local network
@@ -263,7 +278,7 @@ tests/
 | --------------------- | ----------------------------------------------------- | ------------------------------------- |
 | `matrixos_core`       | `os/`, `gfx/`, `apps/`, HAL interfaces, gesture logic | host + Pi                             |
 | `matrixos_hal_sim`    | terminal display, keyboard input                      | host (and Pi, for debugging over SSH) |
-| `matrixos_hal_matrix` | rpi-rgb-led-matrix backend                            | Pi only                               |
+| `matrixos_hal_pi`     | LED panel and encoder backends                        | Pi only                               |
 | `MatrixOS`            | `main.cpp` + the backends available for this target   | both                                  |
 | `matrixos_tests`      | `tests/` against `matrixos_core`                      | host only                             |
 | `matrixos_net`        | embedded HTTP server, mDNS (from v0.4)                | host + Pi                             |

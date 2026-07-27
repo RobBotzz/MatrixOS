@@ -77,6 +77,8 @@ endif()
 add_library(matrixos_core STATIC
     src/gfx/surface.cpp
     src/gfx/font.cpp
+    src/hal/quadrature.cpp
+    src/hal/gestures.cpp
     src/os/log.cpp
     src/os/shell.cpp
     src/os/launcher.cpp
@@ -103,10 +105,14 @@ target_link_libraries(matrixos_hal_sim
 )
 
 if(MATRIXOS_TARGET_PI)
-    add_library(matrixos_hal_matrix STATIC
-        src/hal/matrix/matrix_display.cpp
+    # Both Pi-only backends: the LED panel and the encoder. The encoder needs no
+    # third-party library — it talks to the kernel's GPIO character device, whose
+    # header ships with the cross toolchain.
+    add_library(matrixos_hal_pi STATIC
+        src/hal/pi/matrix_display.cpp
+        src/hal/pi/encoder_input.cpp
     )
-    target_link_libraries(matrixos_hal_matrix
+    target_link_libraries(matrixos_hal_pi
         PUBLIC matrixos_core matrix
         PRIVATE matrixos_warnings
     )
@@ -125,8 +131,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 if(MATRIXOS_TARGET_PI)
-    target_link_libraries(${PROJECT_NAME} PRIVATE matrixos_hal_matrix)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE MATRIXOS_HAS_MATRIX)
+    target_link_libraries(${PROJECT_NAME} PRIVATE matrixos_hal_pi)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE MATRIXOS_HAS_PI_HARDWARE)
 endif()
 
 # =============================================================================
@@ -147,6 +153,8 @@ if(MATRIXOS_BUILD_TESTS)
     add_executable(matrixos_tests
         tests/test_surface.cpp
         tests/test_font.cpp
+        tests/test_quadrature.cpp
+        tests/test_gestures.cpp
         tests/test_shell.cpp
         tests/test_launcher.cpp
         tests/test_plasma.cpp

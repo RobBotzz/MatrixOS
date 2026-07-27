@@ -4,7 +4,7 @@
 // the terms of the GNU General Public License, version 2, as published by the
 // Free Software Foundation. See LICENSE for details.
 
-#include "hal/matrix/matrix_display.h"
+#include "hal/pi/matrix_display.h"
 
 #include "gfx/surface.h"
 

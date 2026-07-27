@@ -64,7 +64,7 @@ private:
         App,
     };
 
-    void buildLauncher();
+    void installLauncher();
     void applyPending();
     void activateApp(std::size_t index);
     void activateLauncher();

@@ -53,7 +53,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
         return;
     }
 
-    buildLauncher();
+    installLauncher();
 
     // Boots into the first app rather than into the launcher, so the panel shows
     // something alive immediately. FR-19 — restore whatever ran last — will
@@ -97,7 +97,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
     display_.clear();
 }
 
-void Shell::buildLauncher()
+void Shell::installLauncher()
 {
     std::vector<std::string_view> names;
     names.reserve(apps_.size());

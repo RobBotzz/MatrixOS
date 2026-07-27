@@ -244,7 +244,7 @@ v0.1 is done when all of the following hold:
 | Q-1 | ~~Which GPIO pins remain free for the encoder?~~ **Answered — see Resolved below.** What remains for the spike: confirm the chosen pins behave on the actual board. | v0.1 spike         |
 | Q-2 | ~~What `--led-slowdown-gpio` value does this panel need?~~ **Answered — see Resolved below.**                                                                                             | v0.1 spike         |
 | Q-3 | ~~What is the panel's multiplex/scan type?~~ **Answered — see Resolved below.**                    | v0.1 spike         |
-| Q-4 | Encoder reading strategy: poll in the main loop, poll in a dedicated thread, or use libgpiod edge events? Affects NFR-3 and must not violate C-3.                              | v0.1 spike         |
+| Q-4 | ~~Encoder reading strategy: polling or edge events?~~ **Answered — see Resolved below.**                              | v0.1 spike         |
 | Q-5 | ~~Which license?~~ **Answered — see Resolved below.** Remaining action: add the `LICENSE` file (acceptance criterion 8). | v0.1 |
 | Q-6 | In-process HTTP client vs. separate service for network apps. Deliberately deferred, see [ADR-0004](adr/0004-network-app-runtime.md).                                          | first network app  |
 | Q-7 | In what format is app state stored? Only the format is open — the location is decided (FR-39, one writable area separate from the system) because v0.4 makes the root filesystem read-only and retrofitting that is expensive.                                                      | v0.3               |
@@ -312,3 +312,28 @@ designed to answer.
 **Q-1, remaining half.** The panel pins are confirmed working by the above. The pins reserved
 for the encoder (5 / 6 / 13) and the home button (19) are still unwired and therefore
 unverified on real hardware.
+
+**Q-4 — encoder reading strategy.** Kernel **edge events** through the GPIO v2 character
+device, read non-blocking once per frame. No polling of pin levels, no extra thread, no
+third-party library.
+
+Why this settles the worry behind the question: the kernel timestamps every transition and
+buffers them, so a 60 Hz read cannot lose a detent however briskly the knob is turned — which
+is what FR-9 demands. Polling levels at 60 Hz would genuinely have missed transitions, because
+a fast turn produces them faster than that. A dedicated thread polling at 1 kHz would have
+worked too, but it would compete for CPU with the panel's refresh thread (C-3) for no benefit.
+
+No dependency was needed: `linux/gpio.h` ships with the aarch64 cross toolchain and the ioctl
+interface is a stable kernel ABI. libgpiod would only wrap it, at the cost of cross-compiling
+another library.
+
+The timing constants — 600 ms for a hold, 10 ms of debounce, four signal transitions per
+detent — live in `GestureRecognizer::Timing` and `QuadratureDecoder`, and both are covered by
+tests that feed synthetic timestamps rather than waiting.
+
+**Note on `DoublePress` (FR-8).** The encoder backend does not produce it. A single press can
+only be confirmed once the window for a second one has elapsed, so enabling double-press
+detection delays *every* press by that window — roughly 300 ms. No app needs the gesture yet
+(Spotify in v0.6 is the first), so the default keeps a press instant. The detection is
+implemented and tested; only the default window of zero switches it off. The keyboard backend
+still emits it on a separate key for testing.

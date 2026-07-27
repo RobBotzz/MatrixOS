@@ -15,8 +15,9 @@
 #include "os/log.h"
 #include "os/shell.h"
 
-#ifdef MATRIXOS_HAS_MATRIX
-#include "hal/matrix/matrix_display.h"
+#ifdef MATRIXOS_HAS_PI_HARDWARE
+#include "hal/pi/encoder_input.h"
+#include "hal/pi/matrix_display.h"
 #endif
 
 #include <chrono>
@@ -77,6 +78,7 @@ int runTestPattern(matrixos::Display &display)
 int main(int argc, char *argv[])
 {
     [[maybe_unused]] const bool force_simulator = hasFlag(argc, argv, "--simulate");
+    [[maybe_unused]] const bool force_keyboard = hasFlag(argc, argv, "--keyboard");
     const bool test_pattern = hasFlag(argc, argv, "--test-pattern");
 
     if (hasFlag(argc, argv, "--verbose"))
@@ -86,7 +88,7 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<matrixos::Display> display;
 
-#ifdef MATRIXOS_HAS_MATRIX
+#ifdef MATRIXOS_HAS_PI_HARDWARE
     if (!force_simulator)
     {
         // Also consumes the library's own --led-* flags from argc/argv.
@@ -116,9 +118,28 @@ int main(int argc, char *argv[])
         return runTestPattern(*display);
     }
 
-    matrixos::KeyboardInput input;
+    std::unique_ptr<matrixos::Input> input;
 
-    matrixos::Shell shell(*display, input);
+#ifdef MATRIXOS_HAS_PI_HARDWARE
+    // --keyboard keeps the panel but takes input from stdin, which is how the
+    // device can be driven over SSH — useful before the encoder is wired, and for
+    // checking whether a fault is in the GPIO layer or above it.
+    if (!force_keyboard)
+    {
+        input = matrixos::EncoderInput::create();
+        if (!input)
+        {
+            matrixos::logWarn("encoder unavailable, falling back to the keyboard");
+        }
+    }
+#endif
+
+    if (!input)
+    {
+        input = std::make_unique<matrixos::KeyboardInput>();
+    }
+
+    matrixos::Shell shell(*display, *input);
     shell.add(std::make_unique<matrixos::PlasmaApp>());
     shell.add(std::make_unique<matrixos::TestPatternApp>());
     shell.run([] { return g_interrupted != 0; });

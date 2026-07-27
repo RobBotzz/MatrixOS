@@ -90,7 +90,34 @@ Pin assignment for `regular` with a single chain (see the resolved Q-1):
 | R1 / G1 / B1 | 11 / 27 / 7 |
 | R2 / G2 / B2 | 8 / 9 / 10 |
 
-Reserved for input, not yet wired: encoder on **5 / 6 / 13**, home button on **19**.
+### Input wiring
+
+Encoder: **KY-040 module**. Home button: a plain momentary switch.
+
+| Wire | Header pin | GPIO | |
+| --- | --- | --- | --- |
+| KY-040 `GND` | 30 | — | |
+| KY-040 `+` | 17 | 3V3 | **never 5 V** — see below |
+| KY-040 `CLK` | 29 | 5 | encoder A |
+| KY-040 `DT` | 31 | 6 | encoder B |
+| KY-040 `SW` | 33 | 13 | encoder push button |
+| Home switch | 35 | 19 | other leg to pin 34 (GND) |
+
+All four input lines are claimed through `/dev/gpiochip0` with the kernel's internal
+**pull-up** enabled, so every switch just shorts its line to ground. No external resistors.
+
+Two things worth recording rather than rediscovering:
+
+- **`+` must go to 3V3, not 5 V.** The module carries 10 kΩ pull-ups from `CLK` and `DT` to
+  `+`, so a 5 V supply would leave both signal lines idling at 5 V and destroy the GPIO
+  inputs. On 3V3 those pull-ups sit in parallel with the Pi's internal ones — roughly 8 kΩ
+  together instead of 50 kΩ, which gives steeper edges and better noise margin on long wires.
+  Leaving `+` unconnected also works; the internal pull-ups alone are enough.
+- Most KY-040 boards populate no pull-up on `SW`. That does not matter here, because the
+  internal pull-up covers it either way.
+
+Nothing needs configuring on the device for any of this: the pins are compiled in as defaults
+and the GPIO character device needs no kernel parameters or device tree overlay.
 
 **Verified with `--test-pattern`:** border closed on all four sides, corner marker in the
 top-left, colour bands in red / green / blue order from top to bottom. Geometry, orientation

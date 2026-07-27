@@ -78,13 +78,20 @@ ctest --test-dir build          # unit tests
 ./build/bin/MatrixOS            # runs the app in the terminal, Ctrl-C to quit
 ```
 
-Controls: **arrow keys** rotate, **space** presses, **h** is the home button. `h` opens the
-launcher and takes you back to the app you came from.
+On the device the rotary encoder and the home button drive everything. In the simulator —
+and with `--keyboard` on the device — the **arrow keys** rotate, **space** presses and **h**
+is the home button. `h` opens the launcher and takes you back to the app you came from.
 
-Two flags worth knowing: `--verbose` traces the input path event by event, and
-`--test-pattern` shows the diagnostic frame without starting the shell — a border, a corner
-marker and three colour gradients, so wrong geometry, a mirrored panel or a swapped channel
-order are visible at a glance. The same frame is also available as an app in the launcher.
+| Flag | Effect |
+| --- | --- |
+| `--keyboard` | keep the panel but take input from stdin, so the device is drivable over SSH |
+| `--simulate` | force the terminal display even on the Pi |
+| `--verbose` | trace the input path event by event |
+| `--test-pattern` | show the diagnostic frame without starting the shell |
+
+The diagnostic frame is a border, a corner marker and three colour gradients, so wrong
+geometry, a mirrored panel or a swapped channel order are visible at a glance. The same frame
+is also available as an app in the launcher.
 
 The host build does not need the submodule at all — it never compiles the LED library.
 
@@ -117,14 +124,20 @@ documented in [docs/requirements.md](docs/requirements.md) under platform constr
 
 ## Deploy
 
-`pi-deployment/deploy.sh` pulls the newest CI artifact onto the device using a GitHub PAT.
-Prerequisites: `git`, `jq`, `unzip`, a PAT with read access to Actions, and a `.env` next
-to the script providing `GITHUB_TOKEN`.
+`pi-deployment/deploy.sh` pulls the artifact of the newest successful `main` build onto the
+device. The script is self-contained: copy that one file across, and the device needs no clone
+of this repository — which is what lets the token stay scoped to `Actions: Read-only`.
+
+On the device: `jq`, `unzip`, `curl`, plus a `.env` next to the script holding `GITHUB_TOKEN`
+(mode `600`).
 
 ```bash
-cd pi-deployment
-./deploy.sh
+~/MatrixOS/pi-deployment/deploy.sh && sudo systemctl restart matrixos
 ```
+
+The restart is not optional: without it the service keeps running the previous binary. The
+`systemd` unit lives in `pi-deployment/matrixos.service`; installing it and every other manual
+step applied to a device is recorded in [docs/device-setup.md](docs/device-setup.md).
 
 This is the development channel. A versioned, restartable release channel is planned —
 see [ADR-0005](docs/adr/0005-deployment-model.md).
