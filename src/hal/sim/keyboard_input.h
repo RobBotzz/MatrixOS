@@ -25,8 +25,9 @@ namespace matrixos
 /// | `d`                  | `DoublePress`                |
 /// | `l`                  | `LongPress`                  |
 ///
-/// `d` and `l` are stand-ins until the gesture recognizer exists; on real
-/// hardware those events come from press timing, not from separate keys.
+/// `d` and `l` keep their own keys rather than coming from press timing: a raw-mode
+/// terminal reports no key releases, and autorepeat starts too late to tell a hold
+/// from a tap without delaying every press.
 ///
 /// If stdin is not a terminal — as a systemd service, for instance — this
 /// degrades to producing no events instead of failing.

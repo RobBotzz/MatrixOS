@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: draft, 2026-07-25.
+Status: v0.1 and v0.2 complete, v0.3 next. Last revised 2026-07-27.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -18,7 +18,7 @@ capabilities; building the app is how that capability gets built and proven.
 | Render loop, display HAL, simulator | Plasma | Frame pacing, flicker-free timing on hardware |
 | Input events, gesture recognition | Launcher | Debouncing rotation and two buttons, press/double-press/hold timing |
 | Full gesture vocabulary + state machines | Pomodoro | Modal UI driven by one encoder |
-| Responsive game loop | Snake, Pong | Input latency, collision, difficulty pacing |
+| Responsive game loop | Snake | Input latency, collision, difficulty pacing |
 | Persistence | Settings, high scores | Store format, crash safety |
 | Wall-clock time & time zones | Clock | NTP dependency, DST, no real-time clock in the device |
 | Bootable image, reproducible provisioning | Appliance | Clone hygiene, unique identity per unit |
@@ -27,9 +27,9 @@ capabilities; building the app is how that capability gets built and proven.
 | Power-loss tolerance, flash longevity | Appliance | RAM budget replaces card wear as the binding limit |
 | HTTP client, JSON, TLS cross-compilation | Weather | Cross-compiling curl + TLS with a Pi sysroot |
 | Async data with graceful staleness | Weather | Not blocking the render loop |
-| OAuth token lifecycle, secret storage | Spotify | No browser on the device; static HTTPS redirect page |
 | Image/GIF decoding & scaling to 64x32 | GIF & Text | Dependency choice, quality at tiny resolution |
 | Upload handling & storage limits | GIF & Text | How many uploads, eviction policy |
+| OAuth token lifecycle, secret storage | Spotify | No browser on the device; static HTTPS redirect page |
 
 ---
 
@@ -172,12 +172,38 @@ last open item of v0.1 — acceptance criteria 3 and 4.
 
 ---
 
-## v0.2 — Interaction depth
+## v0.2 — Interaction depth ✅
+
+**Complete, 2026-07-27.**
 
 **Unlocks:** the full gesture vocabulary and modal app UIs.
 
-- **Bit clock** or **Clock** — wall-clock time, time zone handling.
-- Refinement of the launcher based on the first real usage.
+Delivered:
+
+- **Pomodoro** — the first modal app, and the proof of the milestone's goal. Every gesture the
+  encoder backend actually produces now has a consumer: `Rotate` sets the durations, `Press`
+  advances the cycle, `LongPress` resets from anywhere, and `Home` is handled a level up by the
+  shell. `DoublePress` stays deliberately unproduced (the note on FR-8 in
+  [requirements.md](requirements.md) says why), so the vocabulary is complete in the sense that
+  matters: nothing the hardware emits is unused.
+- **`gfx/font` gained a `scale` parameter**, which is what made 10x14 digits possible.
+- 17 Pomodoro tests, 81 in the suite, host and aarch64 builds clean, formatting enforced.
+
+Two items left this milestone rather than finishing inside it, both recorded where they went:
+
+- **The clock** moved to v0.4 — see below. It was here for a platform capability nothing needs
+  yet, which is the one thing this project is built to avoid.
+- **Launcher refinement** was the open question, and real usage answered it: the current launcher
+  meets FR-15 and nothing about it is broken, but it should eventually become a card carousel.
+  That is polish, not a gap, so it went to the backlog under *Platform and UI* — with four of its
+  five design questions already settled there.
+
+**Honest note on closure.** Unlike v0.1, this milestone had no acceptance criteria written up
+front — see the reasoning attached to
+[requirements.md §5](requirements.md#5-acceptance-criteria-for-v01), which is exactly the
+value that was missing here. Everything above is verified by the test suite and, for the
+layout, frame by frame in the simulator; the panel itself is the maintainer's confirmation.
+v0.3 gets its criteria before its code.
 
 ### Pomodoro — done, 2026-07-27
 
@@ -188,7 +214,7 @@ from anywhere.
 - [x] `gfx/font` gained a `scale` parameter: each font pixel becomes a block, so scale 2 gives
       10x14 glyphs. The clock will want the same.
 - [x] `apps/pomodoro` — the project's first modal interface, and its first cycling one.
-- [x] 15 tests, including the render layout, all green.
+- [x] 17 tests, including the render layout, all green.
 
 **The state machine is two dimensions, not eight phases.** `Mode` is Focus or Break, `State` is
 Setting, Running, Paused or Alarm. Every screen and colour follows from the mode, so the
@@ -198,17 +224,25 @@ phases would have needed eight render paths.
 **Two durations, set in sequence.** Focus first, press moves to break, press starts. One
 encoder, two values, no extra gesture.
 
-**Layout.** Focus: a tomato on the left, leaves included, that empties from the top as time runs
-down; `FOCUS` in `#FF4326`; `MM:SS` in white; a red bar beneath. Break: no tomato, so the digits
-get more width, `BREAK` and the bar in `#2AE070`, digits in a lighter green.
+**One layout, two skins.** Both modes place the icon, the word, the digits and the bar at exactly
+the same coordinates; only the icon, the word and the colours differ. Focus: a tomato, leaves
+included, that empties from the top as time runs down, `FOCUS` and the bar in `#FF4326`, digits in
+white. Break: a coffee cup in `#2AE070` filling the tomato's box pixel for pixel, its steam drawn
+at 65% brightness, digits in a lighter green. Two `static_assert`s tie the cup bitmap to the
+tomato's bounding box, so resizing one and forgetting the other fails the build rather than the
+panel.
 
-Two details that cost more than they look. The digits are placed **individually**, with the
-colon drawn as two blocks rather than taken from the font — beside the tomato only 44 pixels
-remain, and the font's own advance plus colon glyph need 46. And the bar draws its **spent part
-dimmed** rather than not at all, so the full span reads as a scale instead of a shrinking line.
+Three details that cost more than they look. The digits are placed **individually**, with the
+colon drawn as two blocks rather than taken from the font — beside the icon only 44 pixels remain,
+and the font's own advance plus colon glyph need 46. The bar draws its **spent part dimmed**
+rather than not at all, so the full span reads as a scale instead of a shrinking line. And the
+colon **blinks with the second** in the accent colour, driven by the fractional part of the
+remaining time rather than by a timer of its own: it appears in the same frame the digits change
+and cannot drift against them. Where the digits stand still — setting, paused, alarm — it stays
+lit, because a blink without a digit change is flicker, not a second hand.
 
-**No status labels.** The absence of the progress bar is what distinguishes setting from
-running, and blinking digits mark paused. Nothing else is on screen.
+**No status labels.** The ticking digits and the blinking colon are what distinguish setting from
+running; blinking digits mark paused. Nothing else is on screen.
 
 **It counts down from the frame delta, not from wall-clock time.** That keeps it free of C-9
 (no real-time clock, so wall time needs the network) and makes it fully testable — a test
@@ -217,10 +251,19 @@ advances a synthetic 61 seconds and asserts the state.
 **The alarm stops flashing after 30 seconds** and settles into a static screen. A device left
 strobing in an empty room is no use to anyone, and an alarm that gives up entirely is no alarm.
 
-**Still open in v0.2:** the clock. It needs wall time, which brings C-9 and the tension that
-regular NTP runs cause a visible flicker (noted with the resolved Q-2). Per FR-26 the app must
-not read a clock itself, so the platform will need a time provider — with a fake for tests,
-which is what satisfies NFR-17.
+### The clock moved to v0.4 — 2026-07-27
+
+It was in this milestone for the wall-clock capability, not because anything needs it yet. Per
+FR-26 the app may not read a clock itself, so it would have forced a time provider into the
+platform — an interface with no consumer, which is the one thing this project is built to avoid.
+The roadmap's own rule applies: building the app is how the capability gets built.
+
+v0.4 is where it belongs, and not only as a parking space. Wall time depends on NTP, NTP depends
+on WiFi, and WiFi provisioning is exactly what v0.4 delivers — before that a clock on a device
+someone else switched on cannot know the time at all (C-9). It is also the natural default app
+for a fresh unit, which is what v0.4's acceptance criterion already assumes.
+
+Pull it forward at any time; the only cost is deciding the time provider earlier than necessary.
 
 ---
 
@@ -229,12 +272,32 @@ which is what satisfies NFR-17.
 **Unlocks:** responsive input under load, and storing state.
 
 - **Snake** — rotate to turn, press to start.
-- **Pong** — rotate to move the paddle.
 - Persistence for high scores and settings (FR-22, FR-23).
-- **Settings** app: brightness, default app, time zone (FR-25).
+- **Settings** app: brightness and default app (FR-25). The **time zone** travels with the clock
+  to v0.4 — a setting nothing reads is worse than a missing one, because it looks as though it
+  works.
 
-Deferring persistence to here is intentional: by this point three concrete consumers exist,
-so the store can be designed against real needs instead of guesses (Q-7).
+**One game, and it is Snake — 2026-07-27.** Two games would prove the same capability twice.
+Snake is the cheaper of the two for three reasons, one of which is about our hardware rather
+than about the games:
+
+- **The encoder is incremental.** It reports *turned by one step*, never *is at position N*.
+  Snake's mapping — rotate to turn relative to the current heading — is exactly that signal.
+  Pong wants an absolute paddle position, so it would have to accumulate and clamp, and a fast
+  rally would mean spinning a small knob quickly.
+- **No opponent.** With one encoder the second paddle has to be an AI, and its difficulty is the
+  whole game: perfect play is unbeatable, random misses feel cheap. That is tuning work with no
+  test that can tell you when it is right.
+- **Discrete and deterministic.** Snake advances a grid by one cell per tick, in integers, so a
+  test can drive an exact number of ticks and assert the outcome. Pong needs sub-pixel ball
+  positions and a bounce rule chosen to avoid degenerate flat rallies.
+
+Pong moves to the backlog, where the game loop this milestone builds is waiting for it.
+
+Deferring persistence to here is intentional: by this point three concrete consumers exist —
+the high score, the settings, and FR-19's *restore the last active app*, which the shell
+currently fakes with a hard-coded first app — so the store can be designed against real needs
+instead of guesses (Q-7).
 
 One thing must be right the first time: state goes into a **single writable location**,
 separate from the binary (FR-39). v0.4 makes the root filesystem read-only, and retrofitting
@@ -260,6 +323,10 @@ someone else can switch on. Decided in
 - Embedded HTTP server as platform infrastructure. Configuration page reachable at
   `matrixos-xxxx.local` via mDNS, showing the running version.
 - Setup as an app: panel states for setup mode, connecting, connected, failed (Q-9).
+- **Clock**, moved here from v0.2 — the default app for a fresh unit. Needs a time provider in the
+  platform (FR-26, fake for tests per NFR-17), an explicit "time unknown" state until
+  `systemd-timesyncd` reports a sync (C-9), the time zone setting deferred from v0.3, and a sync
+  interval chosen against the panel flicker noted with the resolved Q-2.
 - Read-only root via the overlay filesystem, separate writable state partition, atomic state
   writes.
 - `journald` volatile with a 16 MB cap, swap disabled, `noatime`.
@@ -267,7 +334,7 @@ someone else can switch on. Decided in
 
 Explicitly **not** in scope: updates for shipped devices (see the addendum in
 [ADR-0005](adr/0005-deployment-model.md)), and the OAuth flow — that arrives with the first
-app that needs it, in v0.6.
+app that needs it, in v0.7.
 
 **Done when** someone who has never seen the device can take it, a power supply, and their
 phone, and reach a working clock on the panel — and when pulling the plug at any moment
@@ -290,7 +357,23 @@ Weather is the right first network app: a plain public API, no OAuth, and a fail
 
 ---
 
-## v0.6 — Authenticated services
+## v0.6 — Content from outside
+
+**Unlocks:** image decoding and upload handling on top of v0.4's HTTP server.
+
+- **GIF & Text** — send an image or GIF plus a short caption to the device from a phone or
+  browser; the device serves the upload page itself.
+- Image/GIF decode and downscale to 64x32.
+- Storage management (how many uploads, eviction policy).
+
+**Swapped ahead of authenticated services — 2026-07-27.** By preference, and it costs nothing:
+the two milestones share no dependency, and both sit on infrastructure that v0.4 and v0.5
+already deliver. It even removes a forward reference — Spotify's cover art needs exactly the
+downscaler this milestone builds, so the dependency now points backwards instead of forwards.
+
+---
+
+## v0.7 — Authenticated services
 
 **Unlocks:** OAuth token lifecycle and secret handling.
 
@@ -299,7 +382,7 @@ Weather is the right first network app: a plain public API, no OAuth, and a fail
 - **Strava** — friends' statistics, rotate to change view.
 - Token storage and refresh without re-deploying (FR-29), secrets hygiene (FR-24).
 
-Spotify also needs album-art scaling to 64x32, which overlaps with v0.7.
+Spotify's album art reuses the 64x32 downscaler from v0.6.
 
 The OAuth mechanics are described in [ADR-0007](adr/0007-appliance-provisioning.md): the
 device's own configuration page starts the flow, a static HTTPS page redirects the
@@ -309,35 +392,72 @@ authorization grant, the static page is unnecessary.
 
 ---
 
-## v0.7 — Content from outside
-
-**Unlocks:** an embedded HTTP server and image decoding.
-
-- **GIF & Text** — send an image or GIF plus a short caption to the device from a phone or
-  browser; the device serves the upload page itself.
-- Image/GIF decode and downscale to 64x32.
-- Storage management (how many uploads, eviction policy).
-
----
-
 ## Backlog — unscheduled
 
-Apps that are wanted but not yet placed in a milestone. Ordering within this list is not
-meaningful.
+Wanted but not yet placed in a milestone. Ordering within this list is not meaningful.
 
-### Fits the hardware well
+### Apps that fit the hardware well
 
 | App | Interaction | Needs |
 | --- | --- | --- |
 | GIF & Time | Press to change the animation | Nothing beyond v0.2 |
 | Plasma / Game of Life / Lissajous / fire / rain / DVD-bounce screensavers | Rotate to switch, press to change palette | Nothing; these are Plasma variants |
-| Breakout / Arkanoid | Rotate to move the paddle | v0.3 game loop |
+| Pong | Rotate to move the paddle | v0.3 game loop, plus an AI opponent and absolute paddle positioning from an incremental encoder — see the note in v0.3 |
+| Breakout / Arkanoid | Rotate to move the paddle | v0.3 game loop; shares Pong's paddle problem |
 | Memory | Rotate over cards, press to reveal | v0.3 persistence for best times |
 | 2048 | Rotate to pick a direction, press to commit | Input mapping design — four directions on one encoder |
 | Morse trainer | Press for dots and dashes | Nothing |
 | Stock ticker | Rotate to change symbol | v0.5 network |
 | Collatz visualiser, infinite terrain | Rotate to change the seed | Nothing |
 | ASCII art | Rotate to browse | Font work |
+
+### Platform and UI
+
+#### Carousel launcher
+
+The launcher becomes a rotating card rack instead of a list. The card of the app you just came
+from sits in the centre, its neighbours peek in from the left and right, turning the encoder
+spins the rack, and a press starts whatever is in the middle. The cards carry an icon and a
+short looping animation of the app — **pre-recorded frames, not a live one** (decided
+2026-07-27).
+
+The current launcher already satisfies FR-15, so this is polish, not a gap — which is why it
+sits here and not in a milestone. Five things it will run into, recorded now so they are not
+discovered halfway through:
+
+- **No names on the cards — decided 2026-07-27.** They were the whole width problem: at 5x7 with
+  scale 1, `Pomodoro` alone is 47 of the 64 pixels, which left the neighbours nothing. Without
+  them a card is icon plus preview and the layout falls out easily. The consequence to accept is
+  that recognition now rests entirely on the picture — with a handful of apps that is fine, and if
+  it ever is not, the centre card is where a name would go back.
+- **The icons need an owner — still open.** `App` requires only `name()`; everything else has a
+  default. Three candidates: an optional accessor on `App`, a table inside the launcher keyed by
+  name, or the card handed in at registration time in `main.cpp`. Note that `Launcher` is *not*
+  in the shell's `apps_` list, so whichever wins, the launcher never needs a card of itself.
+  FR-15 does not decide this and all three are defensible — so per NFR-16 it needs an ADR before
+  code.
+- **The previews are recorded, which is what keeps them cheap.** A live preview would mean
+  ticking a second app, and [ADR-0003](adr/0003-single-process-app-model.md) runs exactly one.
+  Pre-recorded frames sidestep that entirely: a 32x24 card at a dozen frames is about 27 KB of
+  RGB24 per app, nothing next to 512 MB of RAM. Two open ends, both small: where the frames come
+  from — a `--record` flag on the app itself is the obvious source and keeps them honest — and
+  that they belong in the binary through a checked-in generator, the way
+  `tools/bdf_to_header.py` produces the font, rather than as pasted numbers.
+- **The zoom on `Home` is the expensive half, and it splits cleanly.** Animating the cards
+  themselves is free: the launcher gets `update(dt)` like any app and can slide or scale its own
+  content over the first frames after `onEnter`, with the shell none the wiser. Zooming the
+  *outgoing app's* frame is the costly part — the launcher may not render another app, so the
+  shell would have to grow a transition state, and the shell's one-frame deferred switch exists
+  precisely so a request from inside the launcher's `onInput` cannot tear down a running app.
+  **Decided 2026-07-27: build the launcher-owned animation, skip the cross-app zoom.** It is
+  most of the perceived polish for none of the architectural cost, and it can be revisited
+  without undoing anything.
+- **The centre card already lands on the last app, by accident.** `Launcher` has no `onEnter`
+  override and lives for the whole run, so `selected_` simply persists — come back with `Home`
+  and the selection is still the app you started. It holds for a crash-dropped app too (FR-17),
+  and at boot only because both the shell's first app and the selection are index 0. It breaks
+  exactly once **FR-19** lands in v0.3 and a restored app is not index 0. So: nothing to do now,
+  and when FR-19 arrives, pass `last_app_` in and the invariant stops being a coincidence.
 
 ## Dropped
 

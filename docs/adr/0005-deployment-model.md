@@ -53,7 +53,9 @@ needing a config file yet.
 - Cost: the CI workflow needs a release job, and the device needs a one-time systemd setup.
   Both are small and only need doing once.
 - Running as root remains a real exposure. Acceptable for a LAN device with no inbound
-  services; it must be revisited when the upload app opens an HTTP port (v0.6).
+  services; it must be revisited in **v0.4**, which is where the first inbound port appears —
+  the setup portal and the configuration page, not the upload app as this line said until
+  2026-07-27. The upload app only widens what is already open.
 - The PAT on the device has read access to Actions for the whole repository. Prefer a
   fine-grained token, scoped to this repository only, and note its expiry somewhere.
 

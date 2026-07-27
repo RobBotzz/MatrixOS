@@ -9,9 +9,11 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** **v0.1 complete.** Two apps and a launcher run on the panel at 60 FPS, driven by
-the rotary encoder and the home button, starting automatically on boot. The same source runs
-in a terminal simulator on the development machine. Next up is v0.2 — see
+**Status:** **v0.2 complete.** Three apps and a launcher run on the panel at 60 FPS, driven by
+the rotary encoder and the home button, starting automatically on boot. The newest of them, a
+Pomodoro timer, is the first with a modal interface — two durations, four states and a full
+focus/break cycle, all from one knob. The same source runs in a terminal simulator on the
+development machine. Next up is v0.3, games and persistence — see
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Documentation
@@ -78,9 +80,27 @@ ctest --test-dir build          # unit tests
 ./build/bin/MatrixOS            # runs the app in the terminal, Ctrl-C to quit
 ```
 
-On the device the rotary encoder and the home button drive everything. In the simulator —
-and with `--keyboard` on the device — the **arrow keys** rotate, **space** presses and **h**
-is the home button. `h` opens the launcher and takes you back to the app you came from.
+On the device the rotary encoder and the home button drive everything. In the simulator — and
+with `--keyboard` on the device — the keyboard stands in for both:
+
+| Key | Event | On the device |
+| --- | --- | --- |
+| right / up arrow | `Rotate(+1)` | turn the encoder clockwise |
+| left / down arrow | `Rotate(-1)` | turn the encoder counter-clockwise |
+| space, enter | `Press` | click the encoder |
+| `l` | `LongPress` | hold the encoder for 600 ms |
+| `d` | `DoublePress` | not produced by default, see Q-4 in [requirements.md](docs/requirements.md) |
+| `h` | `Home` | the dedicated home button ([ADR-0009](docs/adr/0009-dedicated-home-button.md)) |
+
+`h` opens the launcher and takes you back to the app you came from.
+
+**Hold and double-click get their own keys on purpose.** A terminal in raw mode reports
+keystrokes, never releases, so a hold is only visible through autorepeat — whose start delay is
+typically 500 ms, too close to the 600 ms long-press threshold to tell a hold from a tap without
+delaying every single press. Deriving the gesture from key timing here would make the simulator
+emit event sequences the hardware never emits, which is the opposite of what it is for
+([ADR-0002](docs/adr/0002-display-abstraction-and-simulator.md)). Holding space just repeats
+`Press`.
 
 | Flag | Effect |
 | --- | --- |

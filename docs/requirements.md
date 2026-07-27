@@ -254,7 +254,7 @@ v0.1 is done when all of the following hold:
 | Q-7 | In what format is app state stored? Only the format is open — the location is decided (FR-39, one writable area separate from the system) because v0.4 makes the root filesystem read-only and retrofitting that is expensive.                                                      | v0.3               |
 | Q-8 | ~~Two-tier hold or a dedicated home button?~~ **Answered — see Resolved below.** | — |
 | Q-9 | What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32? A version-2 code plus quiet zone needs roughly 33x33 modules, so it is marginal — test with real phones before designing around it. | v0.4 |
-| Q-10 | Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)? If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.6 |
+| Q-10 | Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)? If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.7 |
 
 ### Resolved
 
@@ -346,6 +346,6 @@ tests that feed synthetic timestamps rather than waiting.
 **Note on `DoublePress` (FR-8).** The encoder backend does not produce it. A single press can
 only be confirmed once the window for a second one has elapsed, so enabling double-press
 detection delays *every* press by that window — roughly 300 ms. No app needs the gesture yet
-(Spotify in v0.6 is the first), so the default keeps a press instant. The detection is
+(Spotify in v0.7 is the first), so the default keeps a press instant. The detection is
 implemented and tested; only the default window of zero switches it off. The keyboard backend
 still emits it on a separate key for testing.
