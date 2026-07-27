@@ -222,8 +222,16 @@ profiles contain the WiFi passwords in cleartext.
 
 ## 7. Still open on this device
 
-- The encoder and home button are not wired yet, so the pins reserved for them
-  (5 / 6 / 13 and 19) are unverified on the actual board.
-- The animation from the shell has not run on the panel yet — only the static test pattern
-  has. Flicker under sustained rendering (NFR-5) therefore remains unjudged, because a still
-  image hides timing problems that a moving one reveals.
+Nothing for v0.1 — the device is fully provisioned and everything in this document is verified
+in place.
+
+What is deliberately **not** applied yet, because it belongs to the appliance milestone (v0.4,
+[ADR-0008](adr/0008-power-loss-resilience.md)):
+
+- Read-only root filesystem with a separate writable partition for state.
+- `journald` set to `Storage=volatile` with a 16 MB cap.
+- Swap disabled and `noatime` on mounts.
+
+Until those are in place, pulling the power can in principle corrupt the card. That is
+acceptable for a development device and unacceptable for one handed to somebody else, which is
+exactly why they are scoped to v0.4.

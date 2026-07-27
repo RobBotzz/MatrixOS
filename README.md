@@ -9,10 +9,10 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** pre-alpha. Two apps and a launcher run on the panel and in the terminal simulator,
-driven by the shell at 60 FPS. Still missing for v0.1: the encoder and home-button backend, so
-the device is currently operated by keyboard. See [docs/roadmap.md](docs/roadmap.md) for what
-is planned and in which order.
+**Status:** **v0.1 complete.** Two apps and a launcher run on the panel at 60 FPS, driven by
+the rotary encoder and the home button, starting automatically on boot. The same source runs
+in a terminal simulator on the development machine. Next up is v0.2 — see
+[docs/roadmap.md](docs/roadmap.md).
 
 ## Documentation
 

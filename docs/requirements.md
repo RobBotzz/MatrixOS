@@ -221,6 +221,10 @@ target turns out to be wrong, change the number here rather than quietly missing
 
 ## 5. Acceptance criteria for v0.1
 
+**All met and verified on the device, 2026-07-27.** Kept as written rather than ticked off one
+by one: the value of this list was in deciding up front what "done" meant, and rewriting it
+afterwards would destroy the record of that.
+
 v0.1 is done when all of the following hold:
 
 1. The animation app runs on the panel at ≥ 30 FPS with no visible flicker (NFR-1, NFR-5).
@@ -241,7 +245,7 @@ v0.1 is done when all of the following hold:
 
 | ID  | Question                                                                                                                                                                       | Needed by          |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
-| Q-1 | ~~Which GPIO pins remain free for the encoder?~~ **Answered — see Resolved below.** What remains for the spike: confirm the chosen pins behave on the actual board. | v0.1 spike         |
+| Q-1 | ~~Which GPIO pins remain free for the encoder?~~ **Answered and verified on hardware.** | v0.1 spike         |
 | Q-2 | ~~What `--led-slowdown-gpio` value does this panel need?~~ **Answered — see Resolved below.**                                                                                             | v0.1 spike         |
 | Q-3 | ~~What is the panel's multiplex/scan type?~~ **Answered — see Resolved below.**                    | v0.1 spike         |
 | Q-4 | ~~Encoder reading strategy: polling or edge events?~~ **Answered — see Resolved below.**                              | v0.1 spike         |
@@ -309,9 +313,17 @@ a swapped channel order in one look, so neither `--led-multiplexing` nor
 `--led-row-addr-type` nor `--led-rgb-sequence` is required. This is what the test pattern was
 designed to answer.
 
-**Q-1, remaining half.** The panel pins are confirmed working by the above. The pins reserved
-for the encoder (5 / 6 / 13) and the home button (19) are still unwired and therefore
-unverified on real hardware.
+**Q-1, remaining half — closed 2026-07-27.** The encoder is wired to GPIO 5/6 with its button
+on 13 and the home button on 19, and all four work on the device. Nothing about the pin choice
+had to change.
+
+One thing that only showed up on hardware, and is worth remembering rather than rediscovering:
+the matrix library **drops privileges from root to `daemon`** once the panel is initialised
+([lib/led-matrix.cc:736](../external/rpi-rgb-led-matrix/lib/led-matrix.cc)), so
+`/dev/gpiochip0` cannot be opened after that. The GPIO lines therefore have to be claimed
+*before* the display is created. An already-open descriptor keeps working, because permissions
+are checked at `open()` — so the ordering in `main.cpp` is all that is needed, and the
+library's hardening stays intact.
 
 **Q-4 — encoder reading strategy.** Kernel **edge events** through the GPIO v2 character
 device, read non-blocking once per frame. No polling of pin levels, no extra thread, no

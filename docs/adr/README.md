@@ -17,6 +17,7 @@ decision consciously left open is visibly different from one that was never cons
 | [0007](0007-appliance-provisioning.md) | Appliance provisioning — golden image, captive portal, setup as an app | Accepted |
 | [0008](0008-power-loss-resilience.md) | Power-loss resilience and flash longevity | Accepted |
 | [0009](0009-dedicated-home-button.md) | A dedicated home button alongside the encoder | Accepted |
+| [0010](0010-own-encoder-decoding.md) | Decode the encoder ourselves rather than using the kernel driver | Accepted |
 
 ## Conventions
 

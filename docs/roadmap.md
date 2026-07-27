@@ -33,7 +33,9 @@ capabilities; building the app is how that capability gets built and proven.
 
 ---
 
-## v0.1 — Platform + one animation app
+## v0.1 — Platform + one animation app ✅
+
+**Complete, 2026-07-27.** All eight acceptance criteria met and verified on the device.
 
 **Goal:** prove the whole vertical slice, from encoder to pixel, on both hardware and host.
 
