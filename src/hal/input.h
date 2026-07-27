@@ -34,6 +34,24 @@ struct InputEvent
     int delta = 0;
 };
 
+constexpr const char *inputTypeName(InputType type)
+{
+    switch (type)
+    {
+    case InputType::Rotate:
+        return "Rotate";
+    case InputType::Press:
+        return "Press";
+    case InputType::DoublePress:
+        return "DoublePress";
+    case InputType::LongPress:
+        return "LongPress";
+    case InputType::Home:
+        return "Home";
+    }
+    return "?";
+}
+
 /// A source of input events.
 ///
 /// Two implementations exist by design: the encoder plus home button on the Pi,

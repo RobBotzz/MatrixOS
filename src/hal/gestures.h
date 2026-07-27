@@ -31,8 +31,10 @@ public:
         /// (FR-10).
         std::chrono::milliseconds long_press{600};
 
-        /// Transitions closer together than this are switch bounce.
-        std::chrono::milliseconds debounce{10};
+        /// Transitions closer together than this are switch bounce. Must exceed the
+        /// physical bounce time of the switch, or a bounce is read as a release and
+        /// a hold degrades into a click.
+        std::chrono::milliseconds debounce{30};
 
         /// Zero disables `DoublePress`. Any other value delays every `Press` by
         /// this long, since a single press can only be confirmed once the window

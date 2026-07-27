@@ -7,6 +7,7 @@
 // Composition root: the only place that knows which backends exist.
 
 #include "apps/plasma/plasma.h"
+#include "apps/pomodoro/pomodoro.h"
 #include "apps/testpattern/test_pattern.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
@@ -146,6 +147,7 @@ int main(int argc, char *argv[])
 
     matrixos::Shell shell(*display, *input);
     shell.add(std::make_unique<matrixos::PlasmaApp>());
+    shell.add(std::make_unique<matrixos::PomodoroApp>());
     shell.add(std::make_unique<matrixos::TestPatternApp>());
     shell.run([] { return g_interrupted != 0; });
 

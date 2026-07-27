@@ -176,10 +176,47 @@ last open item of v0.1 — acceptance criteria 3 and 4.
 
 **Unlocks:** the full gesture vocabulary and modal app UIs.
 
-- **Pomodoro** — rotate to set duration, press to start/pause, hold to configure, panel
-  flashes when time is up. Exercises every gesture and the first non-trivial state machine.
 - **Bit clock** or **Clock** — wall-clock time, time zone handling.
 - Refinement of the launcher based on the first real usage.
+
+### Pomodoro — done, 2026-07-27
+
+A focus/break **cycle**, not a single countdown: focus runs down, alarms, and a press starts the
+break; when the break alarms, a press starts the next focus. A long press returns to setting
+from anywhere.
+
+- [x] `gfx/font` gained a `scale` parameter: each font pixel becomes a block, so scale 2 gives
+      10x14 glyphs. The clock will want the same.
+- [x] `apps/pomodoro` — the project's first modal interface, and its first cycling one.
+- [x] 15 tests, including the render layout, all green.
+
+**The state machine is two dimensions, not eight phases.** `Mode` is Focus or Break, `State` is
+Setting, Running, Paused or Alarm. Every screen and colour follows from the mode, so the
+setting screens look like the running ones — you see what you are configuring. Eight named
+phases would have needed eight render paths.
+
+**Two durations, set in sequence.** Focus first, press moves to break, press starts. One
+encoder, two values, no extra gesture.
+
+**Layout.** Focus: tomato on the left that empties from the top as time runs down, `FOCUS` in
+`#FF4326`, four white digits without a colon, a red bar under them. Break: no tomato, so the
+digits get the full width with a colon, `BREAK` and the bar in `#22E6A4`, digits in a lighter
+green.
+
+**No status labels.** The absence of the progress bar is what distinguishes setting from
+running, and blinking digits mark paused. Nothing else is on screen.
+
+**It counts down from the frame delta, not from wall-clock time.** That keeps it free of C-9
+(no real-time clock, so wall time needs the network) and makes it fully testable — a test
+advances a synthetic 61 seconds and asserts the state.
+
+**The alarm stops flashing after 30 seconds** and settles into a static screen. A device left
+strobing in an empty room is no use to anyone, and an alarm that gives up entirely is no alarm.
+
+**Still open in v0.2:** the clock. It needs wall time, which brings C-9 and the tension that
+regular NTP runs cause a visible flicker (noted with the resolved Q-2). Per FR-26 the app must
+not read a clock itself, so the platform will need a time provider — with a fake for tests,
+which is what satisfies NFR-17.
 
 ---
 

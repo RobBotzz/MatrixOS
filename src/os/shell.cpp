@@ -195,6 +195,8 @@ void Shell::requestHome()
 
 void Shell::dispatch(const InputEvent &event)
 {
+    logDebug("input {} {}", inputTypeName(event.type), event.delta);
+
     if (event.type == InputType::Home)
     {
         requestHome();

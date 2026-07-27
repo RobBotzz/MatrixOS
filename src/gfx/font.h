@@ -26,14 +26,14 @@ constexpr int kGlyphHeight = 7;
 constexpr int kGlyphAdvance = 6; // glyph plus one pixel of spacing
 
 /// Draws `text` with its top-left corner at (x, y) and returns the x coordinate
-/// just past the last glyph.
+/// just past the last glyph. `scale` draws each font pixel as a square block, so
+/// scale 2 gives 10x14 glyphs — five of those fit across the panel.
 ///
-/// Needs no clipping from the caller: pixels outside the surface are dropped, so
-/// text may safely run off any edge. Characters outside printable ASCII are drawn
-/// as '?' rather than silently skipped, so a mistake is visible.
-int drawText(Surface &surface, int x, int y, std::string_view text, Color color);
+/// Needs no clipping from the caller: pixels outside the surface are dropped.
+/// Characters outside printable ASCII are drawn as '?' rather than skipped.
+int drawText(Surface &surface, int x, int y, std::string_view text, Color color, int scale = 1);
 
 /// Pixel width `text` would occupy, without a trailing gap. Empty text is zero.
-int textWidth(std::string_view text);
+int textWidth(std::string_view text, int scale = 1);
 
 } // namespace matrixos

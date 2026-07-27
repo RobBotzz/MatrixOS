@@ -117,6 +117,25 @@ TEST_CASE("switch bounce collapses into a single press")
     CHECK(typesOf(recognizer.onButtonChange(false, clock.now())) == std::vector{InputType::Press});
 }
 
+TEST_CASE("a hold survives bounce that outlasts a short debounce window")
+{
+    // The failure this pins down: if a bounce is accepted as a real release, the
+    // recognizer emits Press and the hold that follows is lost — holding the button
+    // then behaves like a click.
+    GestureRecognizer recognizer;
+    FakeClock clock;
+
+    recognizer.onButtonChange(true, clock.now());
+
+    clock.advance(15ms);
+    CHECK(recognizer.onButtonChange(false, clock.now()).empty());
+    clock.advance(3ms);
+    CHECK(recognizer.onButtonChange(true, clock.now()).empty());
+
+    clock.advance(600ms);
+    CHECK(typesOf(recognizer.tick(clock.now())) == std::vector{InputType::LongPress});
+}
+
 TEST_CASE("repeating a level that has not changed is ignored")
 {
     GestureRecognizer recognizer;

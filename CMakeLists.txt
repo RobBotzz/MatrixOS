@@ -83,6 +83,7 @@ add_library(matrixos_core STATIC
     src/os/shell.cpp
     src/os/launcher.cpp
     src/apps/plasma/plasma.cpp
+    src/apps/pomodoro/pomodoro.cpp
     src/apps/testpattern/test_pattern.cpp
 )
 target_include_directories(matrixos_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -158,6 +159,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_shell.cpp
         tests/test_launcher.cpp
         tests/test_plasma.cpp
+        tests/test_pomodoro.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

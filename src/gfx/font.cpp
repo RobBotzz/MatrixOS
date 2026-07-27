@@ -25,8 +25,13 @@ const std::uint8_t *glyphFor(char character)
 
 } // namespace
 
-int drawText(Surface &surface, int x, int y, std::string_view text, Color color)
+int drawText(Surface &surface, int x, int y, std::string_view text, Color color, int scale)
 {
+    if (scale < 1)
+    {
+        scale = 1;
+    }
+
     int cursor = x;
 
     for (const char character : text)
@@ -38,26 +43,38 @@ int drawText(Surface &surface, int x, int y, std::string_view text, Color color)
             for (int column = 0; column < kGlyphWidth; ++column)
             {
                 // Bit 0 is the leftmost pixel; see font5x7_data.h.
-                if ((glyph[row] & (1U << column)) != 0)
+                if ((glyph[row] & (1U << column)) == 0)
                 {
-                    surface.setPixel(cursor + column, y + row, color);
+                    continue;
+                }
+
+                for (int dy = 0; dy < scale; ++dy)
+                {
+                    for (int dx = 0; dx < scale; ++dx)
+                    {
+                        surface.setPixel(cursor + column * scale + dx, y + row * scale + dy, color);
+                    }
                 }
             }
         }
 
-        cursor += kGlyphAdvance;
+        cursor += kGlyphAdvance * scale;
     }
 
     return cursor;
 }
 
-int textWidth(std::string_view text)
+int textWidth(std::string_view text, int scale)
 {
     if (text.empty())
     {
         return 0;
     }
-    return static_cast<int>(text.size()) * kGlyphAdvance - (kGlyphAdvance - kGlyphWidth);
+    if (scale < 1)
+    {
+        scale = 1;
+    }
+    return scale * (static_cast<int>(text.size()) * kGlyphAdvance - (kGlyphAdvance - kGlyphWidth));
 }
 
 } // namespace matrixos
