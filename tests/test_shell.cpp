@@ -8,16 +8,21 @@
 #include "hal/display.h"
 #include "hal/input.h"
 #include "os/app.h"
+#include "os/settings.h"
 #include "os/shell.h"
+#include "os/state.h"
+#include "temp_dir.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <deque>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace matrixos;
+using matrixos::test::TempDir;
 
 namespace
 {
@@ -46,8 +51,11 @@ public:
 
     void clear() override { ++clears; }
 
+    void setBrightness(int percent) override { brightness = percent; }
+
     int presents = 0;
     int clears = 0;
+    int brightness = -1;
     bool last_frame_was_black = true;
 };
 
@@ -86,9 +94,9 @@ struct Calls
 class SpyApp : public App
 {
 public:
-    explicit SpyApp(Calls &calls) : calls_(calls) {}
+    explicit SpyApp(Calls &calls, std::string_view name = "Spy") : calls_(calls), name_(name) {}
 
-    std::string_view name() const override { return "Spy"; }
+    std::string_view name() const override { return name_; }
     void onEnter() override { ++calls_.entered; }
     void onExit() override { ++calls_.exited; }
     void onInput(const InputEvent &event) override { calls_.received.push_back(event); }
@@ -107,6 +115,7 @@ public:
 
 private:
     Calls &calls_;
+    std::string_view name_;
 };
 
 class ThrowingApp : public App
@@ -120,9 +129,9 @@ public:
 };
 
 /// Runs flat out, so tests do not wait on frame pacing.
-Shell makeShell(Display &display, Input &input)
+Shell makeShell(Display &display, Input &input, StateStore &store)
 {
-    return Shell(display, input, Duration::zero());
+    return Shell(display, input, store, Duration::zero());
 }
 
 /// Stops the shell after exactly `frames` frames.
@@ -153,7 +162,8 @@ TEST_CASE("the shell activates the first app and ticks it once per frame")
     ScriptedInput input;
     Calls calls;
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
     shell.run(stopAfter(shell, 3));
 
@@ -170,7 +180,8 @@ TEST_CASE("stopping exits the app and leaves the display dark")
     ScriptedInput input;
     Calls calls;
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
     shell.run(stopAfter(shell, 1));
 
@@ -185,7 +196,8 @@ TEST_CASE("elapsed time is passed on and is never negative")
     ScriptedInput input;
     Calls calls;
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
     shell.run(stopAfter(shell, 5));
 
@@ -200,7 +212,8 @@ TEST_CASE("input events reach the active app")
 
     input.queue({{InputType::Rotate, +1}, {InputType::Press, 0}});
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
     shell.run(stopAfter(shell, 2));
 
@@ -218,7 +231,8 @@ TEST_CASE("Home is consumed by the shell and never reaches an app")
 
     input.queue({{InputType::Home, 0}});
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
     shell.run(stopAfter(shell, 2));
 
@@ -230,7 +244,8 @@ TEST_CASE("an app that throws is dropped and the user lands in the launcher")
     RecordingDisplay display;
     ScriptedInput input;
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     auto app = std::make_unique<ThrowingApp>();
     const ThrowingApp *observer = app.get();
     shell.add(std::move(app));
@@ -259,7 +274,8 @@ TEST_CASE("Home switches to the launcher and back to the app it came from")
     input.queue({});                     // frame 2: launcher on screen
     input.queue({{InputType::Home, 0}}); // frame 3: come back
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.add(std::make_unique<SpyApp>(calls));
 
     std::vector<bool> launcher_on;
@@ -286,9 +302,10 @@ TEST_CASE("the launcher starts the app the user selected")
     input.queue({{InputType::Rotate, +1}}); // select the second entry
     input.queue({{InputType::Press, 0}});   // start it
 
-    Shell shell = makeShell(display, input);
-    shell.add(std::make_unique<SpyApp>(first));
-    shell.add(std::make_unique<SpyApp>(second));
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SpyApp>(second, "Second"));
     shell.run(stopAfter(shell, 5));
 
     CHECK(first.entered == 1);  // started at boot, never returned to
@@ -303,7 +320,8 @@ TEST_CASE("Home does nothing harmful before any app has run")
     ScriptedInput input;
 
     // No apps at all: run() bails out, so Home can never even be dispatched.
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     input.queue({{InputType::Home, 0}});
     shell.run(stopAfter(shell, 2));
 
@@ -315,9 +333,154 @@ TEST_CASE("with no apps registered the shell does nothing at all")
     RecordingDisplay display;
     ScriptedInput input;
 
-    Shell shell = makeShell(display, input);
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
     shell.run(stopAfter(shell, 3));
 
     CHECK(shell.frameCount() == 0);
     CHECK(display.presents == 0);
+}
+
+TEST_CASE("the device comes back to the app that was running (FR-19)")
+{
+    TempDir dir;
+
+    {
+        RecordingDisplay display;
+        ScriptedInput input;
+        Calls first;
+        Calls second;
+
+        input.queue({{InputType::Home, 0}});    // to the launcher
+        input.queue({{InputType::Rotate, +1}}); // move to the second entry
+        input.queue({{InputType::Press, 0}});   // start it
+
+        StateStore store(dir.path());
+        Shell shell = makeShell(display, input, store);
+        shell.add(std::make_unique<SpyApp>(first, "First"));
+        shell.add(std::make_unique<SpyApp>(second, "Second"));
+        shell.run(stopAfter(shell, 5));
+
+        REQUIRE(second.entered == 1);
+    }
+
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls second;
+
+    StateStore store(dir.path());
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SpyApp>(second, "Second"));
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(second.entered == 1);
+    CHECK(first.entered == 0);
+}
+
+TEST_CASE("the launcher opens on the restored app rather than at the top of the list")
+{
+    TempDir dir;
+    {
+        StateStore setup(dir.path());
+        StateSection &shell_state = setup.section("shell");
+        shell_state.setString("last_app", "Second");
+        REQUIRE(shell_state.save());
+    }
+
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls second;
+
+    input.queue({{InputType::Home, 0}});  // frame 1: to the launcher
+    input.queue({});                      // frame 2: the launcher is on screen
+    input.queue({{InputType::Press, 0}}); // frame 3: start whatever is selected
+
+    StateStore store(dir.path());
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SpyApp>(second, "Second"));
+    shell.run(stopAfter(shell, 5));
+
+    CHECK(second.entered == 2); // pressed without turning: same app again
+    CHECK(first.entered == 0);
+}
+
+TEST_CASE("an app named in the store that no longer exists falls back to the first")
+{
+    TempDir dir;
+    {
+        StateStore setup(dir.path());
+        StateSection &shell_state = setup.section("shell");
+        shell_state.setString("last_app", "Tetris");
+        REQUIRE(shell_state.save());
+    }
+
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls second;
+
+    StateStore store(dir.path());
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SpyApp>(second, "Second"));
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(first.entered == 1);
+    CHECK(second.entered == 0);
+}
+
+TEST_CASE("a fixed startup app wins over the one that ran last (FR-25)")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls second;
+
+    StateStore store = StateStore::inMemory();
+    store.section("shell").setString("last_app", "Second");
+    store.section(settings::kSection).setString(settings::kStartup, "First");
+
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SpyApp>(second, "Second"));
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(first.entered == 1);
+    CHECK(second.entered == 0);
+}
+
+TEST_CASE("the stored brightness reaches the display")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls calls;
+
+    StateStore store = StateStore::inMemory();
+    store.section(settings::kSection).setInt(settings::kBrightness, 25);
+
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(calls));
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(display.brightness == 25);
+}
+
+TEST_CASE("a brightness outside the allowed range is clamped, not obeyed")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls calls;
+
+    StateStore store = StateStore::inMemory();
+    store.section(settings::kSection).setInt(settings::kBrightness, 0);
+
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(calls));
+    shell.run(stopAfter(shell, 2));
+
+    CHECK(display.brightness == settings::kMinBrightness);
 }

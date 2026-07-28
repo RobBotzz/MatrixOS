@@ -38,6 +38,7 @@ public:
 
     void present(const Surface &frame) override;
     void clear() override;
+    void setBrightness(int percent) override;
 
 private:
     MatrixDisplay(std::unique_ptr<rgb_matrix::RGBMatrix> matrix, rgb_matrix::FrameCanvas *back);

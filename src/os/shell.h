@@ -8,6 +8,7 @@
 
 #include "gfx/surface.h"
 #include "os/app.h"
+#include "os/launcher.h"
 #include "os/log.h"
 
 #include <cstddef>
@@ -15,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace matrixos
@@ -22,6 +24,7 @@ namespace matrixos
 
 class Display;
 class Input;
+class StateStore;
 
 /// The shell around one active app: it owns the loop, the app lifecycle, the
 /// launcher and the back buffer (ADR-0003).
@@ -35,7 +38,8 @@ public:
     /// 60 FPS (NFR-1). Zero runs flat out, which is what tests want.
     static constexpr Duration kDefaultFrameTime{1.0F / 60.0F};
 
-    Shell(Display &display, Input &input, Duration targetFrameTime = kDefaultFrameTime);
+    Shell(Display &display, Input &input, StateStore &store,
+          Duration targetFrameTime = kDefaultFrameTime);
 
     /// Apps are registered once at startup and owned by the shell — compiled in,
     /// never loaded dynamically (NG4). Registration order is launcher order.
@@ -50,6 +54,8 @@ public:
 
     /// Name of the active app, or an empty view if none is.
     std::string_view activeName() const;
+
+    std::vector<std::string_view> appNames() const;
 
     bool launcherActive() const;
 
@@ -73,6 +79,12 @@ private:
     void requestHome();
     void dispatch(const InputEvent &event);
     void reportFailure(const char *stage, const char *what);
+
+    /// Resolves the `startup` setting to an index (FR-19, FR-25); falls back to
+    /// the first registered app.
+    std::size_t startupApp();
+
+    void applyBrightness();
 
     /// Turns an exception escaping app code into a dropped app instead of a dead
     /// device (FR-17). Catches crashes, not hangs — a blocking app still freezes
@@ -98,10 +110,11 @@ private:
 
     Display &display_;
     Input &input_;
+    StateStore &store_;
     Duration target_frame_time_;
 
     std::vector<std::unique_ptr<App>> apps_;
-    std::unique_ptr<App> launcher_;
+    std::unique_ptr<Launcher> launcher_;
     App *active_ = nullptr;
 
     Target pending_ = Target::None;
@@ -110,6 +123,7 @@ private:
 
     Surface frame_;
     unsigned long frames_ = 0;
+    int brightness_ = -1; // no valid level yet, so the first frame applies one
 };
 
 } // namespace matrixos

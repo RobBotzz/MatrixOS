@@ -9,11 +9,12 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** **v0.2 complete.** Three apps and a launcher run on the panel at 60 FPS, driven by
-the rotary encoder and the home button, starting automatically on boot. The newest of them, a
-Pomodoro timer, is the first with a modal interface — two durations, four states and a full
-focus/break cycle, all from one knob. The same source runs in a terminal simulator on the
-development machine. Next up is v0.3, games and persistence — see
+**Status:** **v0.3 complete.** Five apps and a launcher run
+at 60 FPS, driven by the rotary encoder and the home button, starting automatically on boot. The
+device now remembers things: Snake keeps a high score, the settings app sets brightness and which
+app the device starts with, and it comes back to the app that was running before the power went
+out. Every write is atomic, so pulling the plug costs at most the most recent one. The same source
+runs in a terminal simulator on the development machine. Next up is v0.4, the appliance — see
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Documentation
@@ -44,7 +45,7 @@ The panel is driven through [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-
 ```
 src/
   main.cpp           composition root: picks the backends, runs
-  os/                the shell: tick loop, app lifecycle, logging
+  os/                the shell: tick loop, app lifecycle, logging, state store
   gfx/               Surface, colour — a plain RGB pixel buffer
   hal/               Display and Input interfaces + backends (matrix, sim)
   apps/              the apps themselves
@@ -108,6 +109,18 @@ emit event sequences the hardware never emits, which is the opposite of what it 
 | `--simulate` | force the terminal display even on the Pi |
 | `--verbose` | trace the input path event by event |
 | `--test-pattern` | show the diagnostic frame without starting the shell |
+
+Everything the device remembers — the high score, the settings, the last active app — lives in one
+directory ([ADR-0011](docs/adr/0011-state-store-format.md)). On a development machine that is
+`$XDG_STATE_HOME/matrixos`, and `MATRIXOS_STATE_DIR` overrides it:
+
+```bash
+MATRIXOS_STATE_DIR=/tmp/matrixos-scratch ./build/bin/MatrixOS   # a device with factory defaults
+cat /tmp/matrixos-scratch/*.conf                                # plain text, on purpose
+```
+
+On the device the directory has to exist and belong to `daemon`; see
+[docs/device-setup.md](docs/device-setup.md). Without it MatrixOS runs fine and remembers nothing.
 
 The diagnostic frame is a border, a corner marker and three colour gradients, so wrong
 geometry, a mirrored panel or a swapped channel order are visible at a glance. The same frame

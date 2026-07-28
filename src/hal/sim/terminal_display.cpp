@@ -8,6 +8,8 @@
 
 #include "gfx/surface.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 
 namespace matrixos
@@ -36,6 +38,17 @@ void appendColorPair(std::string &out, Color upper, Color lower)
     {
         out.append(escape, static_cast<std::size_t>(written));
     }
+}
+
+Color dim(Color color, int percent)
+{
+    if (percent >= 100)
+    {
+        return color;
+    }
+    const auto scale = [percent](std::uint8_t channel)
+    { return static_cast<std::uint8_t>(channel * percent / 100); };
+    return Color{scale(color.r), scale(color.g), scale(color.b)};
 }
 
 } // namespace
@@ -68,7 +81,8 @@ void TerminalDisplay::present(const Surface &frame)
         for (int x = 0; x < width_; ++x)
         {
             // For an odd height the missing lower row reads as black.
-            appendColorPair(out_, frame.pixel(x, y), frame.pixel(x, y + 1));
+            appendColorPair(out_, dim(frame.pixel(x, y), brightness_),
+                            dim(frame.pixel(x, y + 1), brightness_));
             out_ += kUpperHalfBlock;
         }
         out_ += kResetAttributes;
@@ -85,6 +99,11 @@ void TerminalDisplay::clear()
     std::fputs(kClearScreen, stdout);
     std::fputs(kCursorHome, stdout);
     showCursor();
+}
+
+void TerminalDisplay::setBrightness(int percent)
+{
+    brightness_ = std::clamp(percent, 0, 100);
 }
 
 void TerminalDisplay::showCursor()

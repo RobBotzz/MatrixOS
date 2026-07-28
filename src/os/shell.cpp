@@ -8,17 +8,26 @@
 
 #include "hal/display.h"
 #include "hal/input.h"
-#include "os/launcher.h"
+#include "os/settings.h"
+#include "os/state.h"
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 #include <utility>
 
 namespace matrixos
 {
+namespace
+{
 
-Shell::Shell(Display &display, Input &input, Duration targetFrameTime)
-    : display_(display), input_(input), target_frame_time_(targetFrameTime),
+constexpr std::string_view kShellSection = "shell";
+constexpr std::string_view kLastApp = "last_app";
+
+} // namespace
+
+Shell::Shell(Display &display, Input &input, StateStore &store, Duration targetFrameTime)
+    : display_(display), input_(input), store_(store), target_frame_time_(targetFrameTime),
       frame_(display.width(), display.height())
 {
 }
@@ -29,6 +38,7 @@ void Shell::add(std::unique_ptr<App> app)
     {
         return;
     }
+
     logInfo("registered app '{}'", app->name());
     apps_.push_back(std::move(app));
 }
@@ -43,6 +53,17 @@ bool Shell::launcherActive() const
     return active_ != nullptr && active_ == launcher_.get();
 }
 
+std::vector<std::string_view> Shell::appNames() const
+{
+    std::vector<std::string_view> names;
+    names.reserve(apps_.size());
+    for (const auto &app : apps_)
+    {
+        names.push_back(app->name());
+    }
+    return names;
+}
+
 void Shell::run(const std::function<bool()> &shouldStop)
 {
     using Clock = std::chrono::steady_clock;
@@ -55,10 +76,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
 
     installLauncher();
 
-    // Boots into the first app rather than into the launcher, so the panel shows
-    // something alive immediately. FR-19 — restore whatever ran last — will
-    // replace this fixed choice once state can be persisted.
-    activateApp(0);
+    activateApp(startupApp());
 
     auto previous = Clock::now();
     while (!shouldStop())
@@ -80,6 +98,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
             guarded("render", [this] { active_->render(frame_); });
         }
 
+        applyBrightness();
         display_.present(frame_);
         ++frames_;
 
@@ -94,19 +113,53 @@ void Shell::run(const std::function<bool()> &shouldStop)
     }
 
     deactivate();
+    store_.saveAll();
     display_.clear();
+}
+
+std::size_t Shell::startupApp()
+{
+    const std::string configured =
+        store_.section(settings::kSection).getString(settings::kStartup, settings::kStartupLast);
+
+    const std::string wanted = configured == settings::kStartupLast
+                                   ? store_.section(kShellSection).getString(kLastApp, "")
+                                   : configured;
+
+    if (wanted.empty())
+    {
+        return 0;
+    }
+
+    for (std::size_t index = 0; index < apps_.size(); ++index)
+    {
+        if (apps_[index]->name() == wanted)
+        {
+            return index;
+        }
+    }
+
+    logWarn("startup app '{}' is not registered — starting '{}' instead", wanted,
+            apps_.front()->name());
+    return 0;
+}
+
+void Shell::applyBrightness()
+{
+    const int wanted = std::clamp(store_.section(settings::kSection)
+                                      .getInt(settings::kBrightness, settings::kDefaultBrightness),
+                                  settings::kMinBrightness, settings::kMaxBrightness);
+
+    if (wanted != brightness_)
+    {
+        brightness_ = wanted;
+        display_.setBrightness(wanted);
+    }
 }
 
 void Shell::installLauncher()
 {
-    std::vector<std::string_view> names;
-    names.reserve(apps_.size());
-    for (const auto &app : apps_)
-    {
-        names.push_back(app->name());
-    }
-
-    launcher_ = std::make_unique<Launcher>(std::move(names),
+    launcher_ = std::make_unique<Launcher>(appNames(),
                                            [this](std::size_t index)
                                            {
                                                pending_ = Target::App;
@@ -141,6 +194,16 @@ void Shell::activateApp(std::size_t index)
     }
 
     last_app_ = index;
+
+    StateSection &shell = store_.section(kShellSection);
+    shell.setString(kLastApp, apps_[index]->name());
+    shell.save();
+
+    if (launcher_ != nullptr)
+    {
+        launcher_->select(index);
+    }
+
     setActive(apps_[index].get());
 }
 

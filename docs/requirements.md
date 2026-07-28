@@ -101,7 +101,7 @@ things we deliberately do not build until a concrete, present need forces the is
 | FR-16 | The home button toggles: pressed in an app it shows the launcher, pressed in the launcher it returns to the app it came from. If no app has run yet, it stays in the launcher. `Home` is never delivered to an app.                                                                                             | M    |
 | FR-17 | An unhandled exception thrown by an app terminates that app, is logged, and returns the user to the launcher — it does not take down the device.   | M    |
 | FR-18 | Registering a new app requires touching exactly one registration point; no changes to shell, launcher, or build wiring beyond adding source files. | M    |
-| FR-19 | The device restores the last active app after a restart.                                                                                           | C    |
+| FR-19 | The device restores the last active app after a restart.                                                                                           | M    |
 | FR-20 | The launcher shows apps as icons/previews rather than a text list.                                                                                 | C    |
 
 ### 3.4 Platform — configuration, persistence, logging
@@ -109,10 +109,15 @@ things we deliberately do not build until a concrete, present need forces the is
 | ID    | Requirement                                                                                               | Prio |
 | ----- | --------------------------------------------------------------------------------------------------------- | ---- |
 | FR-21 | The shell logs to stdout/stderr in a form that `journalctl` can capture, with severity levels.            | M    |
-| FR-22 | Apps can persist and read back small amounts of state (settings, high scores) in a per-app namespace.     | S    |
-| FR-23 | Persisted state survives an unclean power loss without corrupting the store beyond the last write.        | S    |
+| FR-22 | Apps can persist and read back small amounts of state (settings, high scores) in a per-app namespace.     | M    |
+| FR-23 | Persisted state survives an unclean power loss without corrupting the store beyond the last write.        | M    |
 | FR-24 | Secrets (API tokens) are stored outside the repository, are not world-readable, and never appear in logs. | S    |
-| FR-25 | A settings app exposes global options (brightness, active app, time zone).                                | C    |
+| FR-25 | A settings app exposes global options (brightness, active app, time zone).                                | M    |
+
+> **Raised to Must on 2026-07-28** — FR-19, FR-22, FR-23 and FR-25 — because v0.3 now owns them,
+> and Must means "blocker for the milestone that owns it". Nothing about the requirements changed;
+> only their owner did. One exception inside FR-25: the **time zone** travels with the clock to
+> v0.4. A setting nothing reads is worse than a missing one, because it looks as though it works.
 
 ### 3.5 Platform — network foundation (not v0.1)
 
@@ -219,11 +224,17 @@ target turns out to be wrong, change the number here rather than quietly missing
 
 ---
 
-## 5. Acceptance criteria for v0.1
+## 5. Acceptance criteria
 
-**All met and verified on the device, 2026-07-27.** Kept as written rather than ticked off one
-by one: the value of this list was in deciding up front what "done" meant, and rewriting it
-afterwards would destroy the record of that.
+One list per milestone, written **before** its code. v0.2 skipped this and said so in its own
+closing note; the cost was that "done" had to be argued afterwards instead of checked.
+
+Lists are kept as written rather than ticked off item by item. The value of a list like this is
+in deciding up front what "done" means, and editing it afterwards destroys the record of that.
+
+### 5.1 v0.1 — platform and one animation app
+
+**All met and verified on the device, 2026-07-27.**
 
 v0.1 is done when all of the following hold:
 
@@ -239,6 +250,42 @@ v0.1 is done when all of the following hold:
 7. CI is green for host and aarch64 builds and runs at least one meaningful test (NFR-13).
 8. A `LICENSE` file exists and is GPLv2-compatible (C-4).
 
+### 5.2 v0.3 — games and persistence
+
+Written 2026-07-28, before the code. The milestone delivers one game and the store underneath
+it; the format of that store is [ADR-0011](adr/0011-state-store-format.md).
+
+v0.3 is done when all of the following hold:
+
+1. **Snake is playable on the panel.** A press starts a game, rotating turns the snake relative
+   to its current heading, eating grows it and hitting a wall or itself ends it (FR-8).
+2. **No turn is lost.** A detent between two grid steps takes effect at the next step, however
+   briskly the knob is turned (FR-9). Note what this does *not* claim: NFR-3's 50 ms is the
+   budget for the event reaching the app, not for the snake changing direction — a grid game
+   moves when the grid moves, and pretending otherwise would mean sub-cell movement.
+3. **The high score survives.** It is written the moment it is beaten and is still there after
+   both a clean restart and a `kill -9` mid-game (FR-22, FR-23).
+4. **All persisted state lives under one writable root**, and nothing is written outside it.
+   Pointing `MATRIXOS_STATE_DIR` at an empty directory yields a device with factory defaults
+   (FR-39).
+5. **Every write is atomic.** A store file is only ever replaced by `rename`, so an interrupted
+   write leaves either the old value or the new one, and no temporary file survives a completed
+   write (FR-40, NFR-19).
+6. **A missing or read-only state root does not stop the device.** MatrixOS starts, logs it once
+   and runs without persistence. The root has to be writable by `daemon` rather than by root —
+   the matrix library drops privileges — so this is a provisioning mistake that will be made, and
+   it must not brick a unit (C-2).
+7. **Brightness changes live.** Turning the encoder in the settings app changes the panel while
+   turning, and the level is restored after a restart (FR-6, FR-25).
+8. **Startup follows the settings.** With "Last app" the device returns to whatever was active
+   when it was switched off; with a fixed choice it starts that app; a stored app that no longer
+   exists falls back to the first registered one and says so in the log (FR-19, FR-25).
+9. **Home is consistent with the restore.** After booting into a restored app, pressing Home
+   lands on that app's entry in the launcher rather than on the first one (FR-15, FR-16).
+10. **CI is green for host and aarch64**, and the suite covers the store's replace-by-rename
+    contract, Snake's rules over an exact number of ticks, and a settings round-trip (NFR-12,
+    NFR-13).
+
 ---
 
 ## 6. Known open questions
@@ -251,7 +298,7 @@ v0.1 is done when all of the following hold:
 | Q-4 | ~~Encoder reading strategy: polling or edge events?~~ **Answered — see Resolved below.**                              | v0.1 spike         |
 | Q-5 | ~~Which license?~~ **Answered — see Resolved below.** Remaining action: add the `LICENSE` file (acceptance criterion 8). | v0.1 |
 | Q-6 | In-process HTTP client vs. separate service for network apps. Deliberately deferred, see [ADR-0004](adr/0004-network-app-runtime.md).                                          | first network app  |
-| Q-7 | In what format is app state stored? Only the format is open — the location is decided (FR-39, one writable area separate from the system) because v0.4 makes the root filesystem read-only and retrofitting that is expensive.                                                      | v0.3               |
+| Q-7 | ~~In what format is app state stored?~~ **Answered — one `key=value` file per namespace, see [ADR-0011](adr/0011-state-store-format.md).** The location was never open (FR-39).                                                      | v0.3               |
 | Q-8 | ~~Two-tier hold or a dedicated home button?~~ **Answered — see Resolved below.** | — |
 | Q-9 | What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32? A version-2 code plus quiet zone needs roughly 33x33 modules, so it is marginal — test with real phones before designing around it. | v0.4 |
 | Q-10 | Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)? If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.7 |

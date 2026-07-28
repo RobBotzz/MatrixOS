@@ -62,6 +62,14 @@ void Launcher::onInput(const InputEvent &event)
     }
 }
 
+void Launcher::select(std::size_t index)
+{
+    if (index < entries_.size())
+    {
+        selected_ = index;
+    }
+}
+
 void Launcher::render(Surface &surface)
 {
     if (entries_.empty())

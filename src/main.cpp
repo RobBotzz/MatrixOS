@@ -8,6 +8,8 @@
 
 #include "apps/plasma/plasma.h"
 #include "apps/pomodoro/pomodoro.h"
+#include "apps/settings/settings_app.h"
+#include "apps/snake/snake.h"
 #include "apps/testpattern/test_pattern.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
@@ -15,6 +17,7 @@
 #include "hal/sim/terminal_display.h"
 #include "os/log.h"
 #include "os/shell.h"
+#include "os/state.h"
 
 #ifdef MATRIXOS_HAS_PI_HARDWARE
 #include "hal/pi/encoder_input.h"
@@ -23,8 +26,11 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <random>
 #include <thread>
 
 namespace
@@ -51,6 +57,35 @@ bool hasFlag(int argc, char *argv[], const char *flag)
         }
     }
     return false;
+}
+
+const char *environment(const char *name)
+{
+    const char *value = std::getenv(name);
+    return value != nullptr && value[0] != '\0' ? value : nullptr;
+}
+
+/// Where everything the device remembers lives (FR-39, ADR-0011).
+std::filesystem::path stateRoot()
+{
+    if (const char *override_path = environment("MATRIXOS_STATE_DIR"))
+    {
+        return override_path;
+    }
+
+#ifdef MATRIXOS_HAS_PI_HARDWARE
+    return "/var/lib/matrixos";
+#else
+    if (const char *xdg = environment("XDG_STATE_HOME"))
+    {
+        return std::filesystem::path(xdg) / "matrixos";
+    }
+    if (const char *home = environment("HOME"))
+    {
+        return std::filesystem::path(home) / ".local" / "state" / "matrixos";
+    }
+    return std::filesystem::temp_directory_path() / "matrixos";
+#endif
 }
 
 /// Holds the diagnostic frame until asked to stop. No shell, no input.
@@ -145,10 +180,19 @@ int main(int argc, char *argv[])
         return runTestPattern(*display);
     }
 
-    matrixos::Shell shell(*display, *input);
+    // After the display: the matrix library drops privileges to 'daemon' while
+    // creating the panel, and every state write happens after that point.
+    matrixos::StateStore store(stateRoot());
+
+    matrixos::Shell shell(*display, *input, store);
     shell.add(std::make_unique<matrixos::PlasmaApp>());
     shell.add(std::make_unique<matrixos::PomodoroApp>());
+    shell.add(std::make_unique<matrixos::SnakeApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::TestPatternApp>());
+
+    // Last, so its list of startup choices is complete.
+    shell.add(std::make_unique<matrixos::SettingsApp>(store, shell.appNames()));
+
     shell.run([] { return g_interrupted != 0; });
 
     return 0;

@@ -37,6 +37,8 @@ public:
     void onInput(const InputEvent &event) override;
     void render(Surface &surface) override;
 
+    void select(std::size_t index);
+
     std::size_t selected() const { return selected_; }
     std::size_t entryCount() const { return entries_.size(); }
 

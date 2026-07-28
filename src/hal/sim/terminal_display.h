@@ -30,6 +30,7 @@ public:
 
     void present(const Surface &frame) override;
     void clear() override;
+    void setBrightness(int percent) override;
 
 private:
     void showCursor();
@@ -38,6 +39,7 @@ private:
     int height_;
     std::string out_; // reused across frames to avoid reallocating every present
     bool cursor_hidden_ = false;
+    int brightness_ = 100;
 };
 
 } // namespace matrixos

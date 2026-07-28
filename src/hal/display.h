@@ -30,6 +30,10 @@ public:
 
     /// Blank the output. Called on shutdown so the panel goes dark (FR-4).
     virtual void clear() = 0;
+
+    /// Output level, 10 to 100 (FR-6). Not pure: a test double need not implement
+    /// it.
+    virtual void setBrightness(int percent) { (void) percent; }
 };
 
 } // namespace matrixos

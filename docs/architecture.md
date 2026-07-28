@@ -1,10 +1,9 @@
 # Architecture
 
-Status: draft, 2026-07-25.
+Status: current as of 2026-07-28 (v0.3).
 
-This describes the intended structure for v0.1 and the reasoning behind the boundaries.
-Code sketches are illustrative — they show the shape of an interface, not its final
-signature.
+This describes the structure and the reasoning behind the boundaries. Code sketches are
+illustrative — they show the shape of an interface, not its final signature.
 
 ---
 
@@ -84,6 +83,8 @@ public:
     virtual void present(const Surface& frame) = 0;
 
     virtual void clear() = 0;                   // used on shutdown (FR-4)
+
+    virtual void setBrightness(int percent) {}  // from v0.3 (FR-6); apps never call it
 };
 ```
 
@@ -195,13 +196,19 @@ it only if a game needs deterministic physics, and it can be added inside that a
 ### 4.1 Apps do no I/O
 
 An app has no file access, no sockets, no clock reading of its own. Anything from outside
-arrives through an object passed in at construction. Today no app needs this; the rule
-exists from day one because it is what makes the network-runtime decision
-([ADR-0004](adr/0004-network-app-runtime.md)) postponable without cost, and because it
-keeps apps testable.
+arrives through an object passed in at construction. The rule exists from day one because it is
+what makes the network-runtime decision ([ADR-0004](adr/0004-network-app-runtime.md))
+postponable without cost, and because it keeps apps testable.
 
 This is a convention, not a layer. There is no `DataProvider` base class until there is a
 second provider to justify it (NFR-17).
+
+From v0.3 two apps have such an object: Snake and the settings app hold a `StateSection` from the
+store (§9.3). That is the rule working rather than an exception to it — neither app opens a file,
+and a test hands them an in-memory store. One thing follows that the app authors must know:
+**saving blocks.** An `fsync` on an SD card can cost more than a frame, so a save belongs on a
+rare, user-visible event — a record beaten, an app switched, the settings left — and never on the
+per-frame path.
 
 ---
 
@@ -209,8 +216,9 @@ second provider to justify it (NFR-17).
 
 ```
 setup:   build display + input backends (composition root)
+         open the state store                                 # after the display: §9.3
          register apps
-         activate launcher
+         activate the startup app                             # FR-19/FR-25, not the launcher
 
 each frame:
          dt = now - last
@@ -219,11 +227,12 @@ each frame:
              else: active.onInput(event)
          active.update(dt)
          active.render(backBuffer)
+         apply brightness if the setting changed               # FR-6
          display.present(backBuffer)
          sleep until the frame budget is used up               # NFR-1
 
 on signal:
-         display.clear(); exit                                # FR-4
+         store.saveAll(); display.clear(); exit                # FR-4
 ```
 
 The app tick and render are wrapped so an exception unloads the app, logs it, and drops
@@ -247,7 +256,8 @@ src/
     registry.{h,cpp}      the list of available apps
     launcher.{h,cpp}      app-selection menu (an App itself)
     log.h                 leveled logging to stdout/stderr
-    state.{h,cpp}         atomic state store        (from v0.3, see §9)
+    state.{h,cpp}         atomic state store        (v0.3, see §9.3)
+    settings.h            the keys the shell and the settings app share
   gfx/
     surface.{h,cpp}
     color.h
@@ -265,6 +275,10 @@ src/
     mdns.{h,cpp}          stable name on the local network
   apps/
     plasma/               v0.1 animation app
+    pomodoro/             v0.2 focus/break cycle
+    snake/                v0.3 game
+    settings/             v0.3 brightness and startup app
+    testpattern/          panel diagnostics
     setup/                provisioning UI           (from v0.4)
 tests/
   ...                     host-only, Catch2
@@ -276,7 +290,7 @@ tests/
 
 | Target                | Contents                                              | Built where                           |
 | --------------------- | ----------------------------------------------------- | ------------------------------------- |
-| `matrixos_core`       | `os/`, `gfx/`, `apps/`, HAL interfaces, gesture logic | host + Pi                             |
+| `matrixos_core`       | `os/`, `gfx/`, `apps/`, HAL interfaces, gesture logic, state store | host + Pi                 |
 | `matrixos_hal_sim`    | terminal display, keyboard input                      | host (and Pi, for debugging over SSH) |
 | `matrixos_hal_pi`     | LED panel and encoder backends                        | Pi only                               |
 | `MatrixOS`            | `main.cpp` + the backends available for this target   | both                                  |
@@ -344,11 +358,27 @@ The advantage this buys is worth naming: comparable headless devices do WiFi onb
 behind a blinking LED. Having a panel means every failure can be shown where the user is
 already looking.
 
-### 9.3 One state store, written atomically
+### 9.3 One state store, written atomically — built in v0.3
 
 All persistent state — WiFi credentials, tokens, settings, scores — goes through
 `os/state.{h,cpp}` into a single writable location, separate from the read-only system and
-from the binary (FR-39). Every write is temp file, `fsync`, `rename` (FR-40).
+from the binary (FR-39). Every write is temp file, `fsync`, `rename`, `fsync` of the directory
+(FR-40). The format is one `key=value` file per namespace,
+[ADR-0011](adr/0011-state-store-format.md).
+
+It arrived a milestone before the appliance it was written for, because v0.3 produced three real
+consumers — the shell's last active app, the settings, and Snake's high score. That was the plan:
+the store is designed against needs rather than guesses.
+
+Two consequences of the real thing that the sketch did not anticipate:
+
+- **The store is opened after the display, not before.** The matrix library drops privileges to
+  `daemon` while creating the panel, and every state write happens after that point. Checking
+  writability as root and then writing as `daemon` would produce a device that looks healthy and
+  forgets everything.
+- **An unusable state root degrades instead of failing.** The store keeps everything in memory,
+  logs the reason once, and the device runs. A provisioning mistake must not brick a unit that
+  the maintainer cannot easily reach (C-10).
 
 Two reasons this is a platform component rather than a convention:
 

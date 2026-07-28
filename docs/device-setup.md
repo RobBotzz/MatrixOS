@@ -5,7 +5,7 @@ two reasons: NFR-21 requires that a device can be rebuilt from a blank card with
 undocumented steps, and [ADR-0007](adr/0007-appliance-provisioning.md) turns this list into
 `provision.sh` when the appliance milestone (v0.4) arrives.
 
-Status of the development device (`robinsmatrix`), 2026-07-27.
+Status of the development device (`robinsmatrix`), 2026-07-28.
 
 ## 1. Operating system
 
@@ -195,7 +195,36 @@ And after every `deploy.sh`, the service keeps running the old binary until rest
 Logs: `journalctl -u matrixos -f`. Remember that ADR-0008 makes the journal volatile, so
 these logs are gone after a reboot.
 
-## 6. Network
+## 6. State directory
+
+From v0.3 the device remembers things — the last active app, the brightness, high scores. All of
+it lives in one writable directory ([ADR-0011](adr/0011-state-store-format.md), FR-39):
+
+```bash
+sudo install -d -o daemon -g daemon -m 0700 /var/lib/matrixos
+```
+
+**The owner is `daemon`, not `root`, and that is the whole point of writing this down.** MatrixOS
+starts as root because the matrix library needs `/dev/mem`, and the library then drops privileges
+to `daemon` as soon as the panel is initialised (see the resolved Q-1). Every state write happens
+after that moment, so a directory owned by root would leave the device running perfectly and
+silently forgetting everything.
+
+Mode `0700` rather than `0755` because WiFi credentials and OAuth tokens move in here later
+(FR-24), and it costs nothing to get right now.
+
+If the directory is missing or not writable, MatrixOS logs it once at startup and runs without
+persistence rather than refusing to start. To check:
+
+```bash
+journalctl -u matrixos | grep -i 'state'
+ls -la /var/lib/matrixos          # cat any *.conf to see what the device remembers
+```
+
+`MATRIXOS_STATE_DIR` overrides the location, which is how a test run stays out of the real
+device's state.
+
+## 7. Network
 
 Two WiFi profiles for two locations. Raspberry Pi OS Trixie configures the network through
 **netplan** with NetworkManager as the renderer, so `nmcli` writes into
@@ -220,10 +249,10 @@ also the mechanism FR-36 will use for the configuration page.
 For an appliance image this directory is exactly what NFR-22 requires to be scrubbed: the
 profiles contain the WiFi passwords in cleartext.
 
-## 7. Still open on this device
+## 8. Still open on this device
 
-Nothing for v0.1 — the device is fully provisioned and everything in this document is verified
-in place.
+Everything in sections 1 to 5 and 7 is verified in place. Section 6 is the one step v0.3 adds and
+it has to be applied once, by hand, before the device can remember anything.
 
 What is deliberately **not** applied yet, because it belongs to the appliance milestone (v0.4,
 [ADR-0008](adr/0008-power-loss-resilience.md)):

@@ -82,8 +82,11 @@ add_library(matrixos_core STATIC
     src/os/log.cpp
     src/os/shell.cpp
     src/os/launcher.cpp
+    src/os/state.cpp
     src/apps/plasma/plasma.cpp
     src/apps/pomodoro/pomodoro.cpp
+    src/apps/settings/settings_app.cpp
+    src/apps/snake/snake.cpp
     src/apps/testpattern/test_pattern.cpp
 )
 target_include_directories(matrixos_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -158,8 +161,11 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_gestures.cpp
         tests/test_shell.cpp
         tests/test_launcher.cpp
+        tests/test_state.cpp
         tests/test_plasma.cpp
         tests/test_pomodoro.cpp
+        tests/test_snake.cpp
+        tests/test_settings.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

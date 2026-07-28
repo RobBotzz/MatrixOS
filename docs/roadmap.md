@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: v0.1 and v0.2 complete, v0.3 next. Last revised 2026-07-27.
+Status: v0.1, v0.2 and v0.3 complete, v0.4 next. Last revised 2026-07-29.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -13,23 +13,23 @@ a time, and every milestone ends with something visibly working on the panel.
 This is the reason for the ordering. Each app in the backlog needs certain platform
 capabilities; building the app is how that capability gets built and proven.
 
-| Capability | First unlocked by | Hard part |
-| --- | --- | --- |
-| Render loop, display HAL, simulator | Plasma | Frame pacing, flicker-free timing on hardware |
-| Input events, gesture recognition | Launcher | Debouncing rotation and two buttons, press/double-press/hold timing |
-| Full gesture vocabulary + state machines | Pomodoro | Modal UI driven by one encoder |
-| Responsive game loop | Snake | Input latency, collision, difficulty pacing |
-| Persistence | Settings, high scores | Store format, crash safety |
-| Wall-clock time & time zones | Clock | NTP dependency, DST, no real-time clock in the device |
-| Bootable image, reproducible provisioning | Appliance | Clone hygiene, unique identity per unit |
-| WiFi onboarding without keyboard or screen | Appliance | Single radio: access point and client mode are sequential |
-| Embedded HTTP server | Appliance | Platform infrastructure: setup portal, config page, OAuth callback — later reused for uploads |
-| Power-loss tolerance, flash longevity | Appliance | RAM budget replaces card wear as the binding limit |
-| HTTP client, JSON, TLS cross-compilation | Weather | Cross-compiling curl + TLS with a Pi sysroot |
-| Async data with graceful staleness | Weather | Not blocking the render loop |
-| Image/GIF decoding & scaling to 64x32 | GIF & Text | Dependency choice, quality at tiny resolution |
-| Upload handling & storage limits | GIF & Text | How many uploads, eviction policy |
-| OAuth token lifecycle, secret storage | Spotify | No browser on the device; static HTTPS redirect page |
+| Capability                                 | First unlocked by     | Hard part                                                                                     |
+| ------------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------- |
+| Render loop, display HAL, simulator        | Plasma                | Frame pacing, flicker-free timing on hardware                                                 |
+| Input events, gesture recognition          | Launcher              | Debouncing rotation and two buttons, press/double-press/hold timing                           |
+| Full gesture vocabulary + state machines   | Pomodoro              | Modal UI driven by one encoder                                                                |
+| Responsive game loop                       | Snake                 | Input latency, collision, difficulty pacing                                                   |
+| Persistence                                | Settings, high scores | Store format ([ADR-0011](adr/0011-state-store-format.md)), crash safety                        |
+| Wall-clock time & time zones               | Clock                 | NTP dependency, DST, no real-time clock in the device                                         |
+| Bootable image, reproducible provisioning  | Appliance             | Clone hygiene, unique identity per unit                                                       |
+| WiFi onboarding without keyboard or screen | Appliance             | Single radio: access point and client mode are sequential                                     |
+| Embedded HTTP server                       | Appliance             | Platform infrastructure: setup portal, config page, OAuth callback — later reused for uploads |
+| Power-loss tolerance, flash longevity      | Appliance             | RAM budget replaces card wear as the binding limit                                            |
+| HTTP client, JSON, TLS cross-compilation   | Weather               | Cross-compiling curl + TLS with a Pi sysroot                                                  |
+| Async data with graceful staleness         | Weather               | Not blocking the render loop                                                                  |
+| Image/GIF decoding & scaling to 64x32      | GIF & Text            | Dependency choice, quality at tiny resolution                                                 |
+| Upload handling & storage limits           | GIF & Text            | How many uploads, eviction policy                                                             |
+| OAuth token lifecycle, secret storage      | Spotify               | No browser on the device; static HTTPS redirect page                                          |
 
 ---
 
@@ -54,7 +54,7 @@ Scope:
 - `LICENSE` (GPLv2-compatible, C-4).
 - Repository groundwork listed below.
 
-Done when the acceptance criteria in [requirements.md §5](requirements.md#5-acceptance-criteria-for-v01)
+Done when the acceptance criteria in [requirements.md §5.1](requirements.md#51-v01--platform-and-one-animation-app)
 are met.
 
 ### Groundwork — done
@@ -73,7 +73,7 @@ Inconsistencies that existed before this milestone started, cleared on 2026-07-2
       generator, a leftover from developing on Windows. It could not have configured on WSL
       at all. Now `Unix Makefiles`.
 - [x] `pi-deployment/deploy.sh` used an undefined `$TEMP_ZIP` and took `artifacts[0]`, which
-      can be a pull-request build. It now resolves the newest *successful* run on `main`,
+      can be a pull-request build. It now resolves the newest _successful_ run on `main`,
       creates a temporary file properly, checks its prerequisites, and restores the
       executable bit that artifact zips drop.
 - [x] The CI `test` job did not check out the repository and only echoed a TODO. Removed —
@@ -195,12 +195,12 @@ Two items left this milestone rather than finishing inside it, both recorded whe
   yet, which is the one thing this project is built to avoid.
 - **Launcher refinement** was the open question, and real usage answered it: the current launcher
   meets FR-15 and nothing about it is broken, but it should eventually become a card carousel.
-  That is polish, not a gap, so it went to the backlog under *Platform and UI* — with four of its
+  That is polish, not a gap, so it went to the backlog under _Platform and UI_ — with four of its
   five design questions already settled there.
 
 **Honest note on closure.** Unlike v0.1, this milestone had no acceptance criteria written up
 front — see the reasoning attached to
-[requirements.md §5](requirements.md#5-acceptance-criteria-for-v01), which is exactly the
+[requirements.md §5](requirements.md#5-acceptance-criteria), which is exactly the
 value that was missing here. Everything above is verified by the test suite and, for the
 layout, frame by frame in the simulator; the panel itself is the maintainer's confirmation.
 v0.3 gets its criteria before its code.
@@ -267,7 +267,11 @@ Pull it forward at any time; the only cost is deciding the time provider earlier
 
 ---
 
-## v0.3 — Games and persistence
+## v0.3 — Games and persistence ✅
+
+**Complete, 2026-07-29.** All ten acceptance criteria met. Criterion 1 — Snake playable — confirmed
+on the device by the maintainer; the rest are covered by the suite and by end-to-end runs against a
+real state directory, listed under _How the criteria were checked_ below.
 
 **Unlocks:** responsive input under load, and storing state.
 
@@ -281,7 +285,7 @@ Pull it forward at any time; the only cost is deciding the time provider earlier
 Snake is the cheaper of the two for three reasons, one of which is about our hardware rather
 than about the games:
 
-- **The encoder is incremental.** It reports *turned by one step*, never *is at position N*.
+- **The encoder is incremental.** It reports _turned by one step_, never _is at position N_.
   Snake's mapping — rotate to turn relative to the current heading — is exactly that signal.
   Pong wants an absolute paddle position, so it would have to accumulate and clamp, and a fast
   rally would mean spinning a small knob quickly.
@@ -295,7 +299,7 @@ than about the games:
 Pong moves to the backlog, where the game loop this milestone builds is waiting for it.
 
 Deferring persistence to here is intentional: by this point three concrete consumers exist —
-the high score, the settings, and FR-19's *restore the last active app*, which the shell
+the high score, the settings, and FR-19's _restore the last active app_, which the shell
 currently fakes with a hard-coded first app — so the store can be designed against real needs
 instead of guesses (Q-7).
 
@@ -303,6 +307,118 @@ One thing must be right the first time: state goes into a **single writable loca
 separate from the binary (FR-39). v0.4 makes the root filesystem read-only, and retrofitting
 that is far more work than getting the path right now. Writes are atomic from the start
 (FR-40) — it is ten lines and it is what protects the store when the plug is pulled.
+
+Done when the acceptance criteria in
+[requirements.md §5.2](requirements.md#52-v03--games-and-persistence) are met. This time they
+were written first, which is what v0.2's closing note promised.
+
+### Decided before the code — 2026-07-28
+
+Four questions the milestone would otherwise have answered by accident, halfway through.
+
+**Q-7 is closed: one `key=value` file per namespace**, replaced atomically, in one writable root
+— [ADR-0011](adr/0011-state-store-format.md). The deciding argument is not the format itself but
+what a file boundary buys: a namespace becomes a failure domain, so Snake writing a high score
+cannot damage the settings, and in v0.4 it cannot damage WiFi credentials or tokens. JSON would
+have made every write a rewrite of the entire device state, for nesting that has nothing to nest
+at this size.
+
+**Snake gets a visible wall.** A one-pixel frame, 2x2 pixel cells, 31x15 cells of play area. The
+alternative was the full 32x16 panel, which is a slightly larger field whose lethal edge is
+invisible — and the panel's own rim is hard to judge in a dark room. A score bar across the top
+was the other option and costs a quarter of the field; the score goes on the idle and game-over
+screens instead, which are the two moments anyone reads it.
+
+**Startup is a setting, not a precedence rule.** FR-19 (restore the last active app) and FR-25 (a
+default app) collide at boot, and the tidy way out is to stop treating it as a collision: the
+settings app offers `Start` = [Last app, Plasma, Pomodoro, Snake, …] and defaults to _Last app_.
+Both requirements are met, neither has to lose, and v0.4 gets what it already assumes — the
+ability to make the clock the factory default of a fresh unit.
+
+The consequence worth naming: **the last app is remembered by name, not by index.** An index would
+silently restore a different app the first time one is registered ahead of it. The price is that
+two apps must not share a name. `Shell::add` warned about that for a while; the warning was
+removed on 2026-07-29 because only a developer editing `main.cpp` can cause a clash, the warning
+prevented nothing, and ADR-0008 makes the journal volatile — so it was unobservable on exactly the
+device it was meant to protect. `startupApp()` still reports a stored app that no longer exists,
+which is the case that actually occurs after a rename.
+
+**Brightness belongs to the shell.** `Display` gains `setBrightness()` with the two
+implementations it already has by design — the panel's own PWM, and colour scaling in the
+simulator. The settings app never touches the HAL: it writes a number into the store, and the
+shell applies changes it sees there. That gives a live preview while the knob turns, and makes
+the boot path and the adjustment path the same one line of code. Scaling the finished `Surface`
+before `present()` would have avoided touching the HAL at all, but it throws away the panel's
+11-bit PWM resolution and shows as colour banding exactly where it hurts — at low brightness.
+
+### Delivered — 2026-07-28
+
+- **`os/state`** — `StateStore` over one writable root, `StateSection` per namespace, every save a
+  temp file, `fsync`, `rename`, `fsync` of the directory. 18 tests against a real temporary
+  directory, because faking the filesystem would have tested the fake: the atomicity lives in
+  `rename`, not in our code.
+- **Snake** — 31x15 cells, walls kill, the tail vacates its cell in the same step so following your
+  own tail is legal, and the pace rises with the length from 5 to at most 14 cells per second.
+  16 tests, including one that plays the game: a helper steers towards the food through the real
+  turning path rather than reaching into the app.
+- **Settings** — brightness and startup app, modal like the Pomodoro. 9 tests.
+- **FR-19 in the shell**, plus the launcher highlight following the active app. 6 new shell tests.
+- **`Display::setBrightness`** in both backends. 130 tests in the suite, host and aarch64 clean.
+
+Three things that only became clear while building, each of which changed the code:
+
+- **The store must be opened _after_ the display, not before.** The matrix library drops
+  privileges to `daemon` while creating the panel, and every state write happens after that.
+  Opening the store first would have checked whether *root* can write to the directory and then
+  failed on every save — a device that looks healthy and forgets everything. `main.cpp` now says
+  so at the call site, and [device-setup.md](device-setup.md) has the one provisioning line that
+  makes the directory `daemon`-owned.
+- **The high score is banked when it is beaten, not when the game ends.** The first version wrote
+  it in the death handler, which reads naturally and quietly fails acceptance criterion 3: a power
+  cut during a record game would lose the record. It now writes on the food that sets it.
+- **A turn queue, not a pending direction.** Two detents between two grid steps are two quarter
+  turns, one per step. Applying both at once would be an instant reversal into the snake's own
+  neck — the bug that makes home-made Snake feel broken, and the reason criterion 2 is worded the
+  way it is.
+
+**And one that only playing it found — 2026-07-29.** The game-over screen reported a score one
+lower than the high score it had just set. `score()` was derived from the length of the body, but
+a fatal step pops the tail *before* the collision check — deliberately, so following your own tail
+is legal — which leaves the deque one cell short of the truth at exactly the moment of death. Only
+self-collision was affected; a wall kills earlier in the step. The score is now counted where it
+is earned instead of inferred from a container that passes through an intermediate state. No test
+would have found this from the rules alone, because the rules were never wrong; the regression test
+now drives the snake into its own body and checks that the two numbers agree.
+
+### How the criteria were checked — 2026-07-29
+
+Criterion 1 is a judgement about feel — input latency, whether the speed curve is fun, whether 2x2
+cells read at a glance — and was confirmed by playing on the device. The rest were verified
+mechanically, several of them by driving the real binary rather than by unit test alone:
+
+| #   | Verified by                                                                                                      |
+| --- | ---------------------------------------------------------------------------------------------------------------- |
+| 1 Playable on the panel | Played on the device                                                                         |
+| 2 No turn is lost | Tests over an exact number of ticks, including the reversal-into-the-neck guard                     |
+| 3 High score survives | Real run: `snake.conf` appeared **while the game was still running**, then survived `kill -9`   |
+| 4 One writable root | Real run: only the three `.conf` files under the root, working directory untouched               |
+| 5 Every write atomic | `write` → `fsync` → `rename` → `fsync` of the directory, plus two tests over leftover temp files |
+| 6 Unusable root does not stop the device | Real run against a `chmod 500` directory: one warning, device runs, exit 0   |
+| 7 Brightness live | Real run: brightest pixel 267 → 765 while turning; level restored after restart                     |
+| 8 Startup follows the settings | Real run: a fixed `startup=Plasma` beat `last_app=Settings`                            |
+| 9 Home consistent with the restore | Real run with `startup=Snake`: boots into Snake, `Home` highlights row 3           |
+| 10 CI green, suite covers the contracts | Locally the same three checks CI runs, all clean; CI confirms on push        |
+
+Criterion 9 was first checked with Plasma, which proves nothing: Plasma is index 0, so the
+highlight would sit there with no restore at all. Repeated with Snake.
+
+**Still open, and deliberately small:** the minimum brightness of 10 % in `os/settings.h` is a
+guess about where the panel stops being useful. It costs one number to correct, once someone has
+turned it all the way down on the hardware.
+
+Anyone setting up a fresh device applies [device-setup.md §6](device-setup.md) first — without the
+state directory the device runs fine and remembers nothing, which is by design but not what you
+want to test.
 
 ---
 
@@ -398,18 +514,18 @@ Wanted but not yet placed in a milestone. Ordering within this list is not meani
 
 ### Apps that fit the hardware well
 
-| App | Interaction | Needs |
-| --- | --- | --- |
-| GIF & Time | Press to change the animation | Nothing beyond v0.2 |
-| Plasma / Game of Life / Lissajous / fire / rain / DVD-bounce screensavers | Rotate to switch, press to change palette | Nothing; these are Plasma variants |
-| Pong | Rotate to move the paddle | v0.3 game loop, plus an AI opponent and absolute paddle positioning from an incremental encoder — see the note in v0.3 |
-| Breakout / Arkanoid | Rotate to move the paddle | v0.3 game loop; shares Pong's paddle problem |
-| Memory | Rotate over cards, press to reveal | v0.3 persistence for best times |
-| 2048 | Rotate to pick a direction, press to commit | Input mapping design — four directions on one encoder |
-| Morse trainer | Press for dots and dashes | Nothing |
-| Stock ticker | Rotate to change symbol | v0.5 network |
-| Collatz visualiser, infinite terrain | Rotate to change the seed | Nothing |
-| ASCII art | Rotate to browse | Font work |
+| App                                                                       | Interaction                                 | Needs                                                                                                                  |
+| ------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| GIF & Time                                                                | Press to change the animation               | Nothing beyond v0.2                                                                                                    |
+| Plasma / Game of Life / Lissajous / fire / rain / DVD-bounce screensavers | Rotate to switch, press to change palette   | Nothing; these are Plasma variants                                                                                     |
+| Pong                                                                      | Rotate to move the paddle                   | v0.3 game loop, plus an AI opponent and absolute paddle positioning from an incremental encoder — see the note in v0.3 |
+| Breakout / Arkanoid                                                       | Rotate to move the paddle                   | v0.3 game loop; shares Pong's paddle problem                                                                           |
+| Memory                                                                    | Rotate over cards, press to reveal          | v0.3 persistence for best times                                                                                        |
+| 2048                                                                      | Rotate to pick a direction, press to commit | Input mapping design — four directions on one encoder                                                                  |
+| Morse trainer                                                             | Press for dots and dashes                   | Nothing                                                                                                                |
+| Stock ticker                                                              | Rotate to change symbol                     | v0.5 network                                                                                                           |
+| Collatz visualiser, infinite terrain                                      | Rotate to change the seed                   | Nothing                                                                                                                |
+| ASCII art                                                                 | Rotate to browse                            | Font work                                                                                                              |
 
 ### Platform and UI
 
@@ -432,7 +548,7 @@ discovered halfway through:
   it ever is not, the centre card is where a name would go back.
 - **The icons need an owner — still open.** `App` requires only `name()`; everything else has a
   default. Three candidates: an optional accessor on `App`, a table inside the launcher keyed by
-  name, or the card handed in at registration time in `main.cpp`. Note that `Launcher` is *not*
+  name, or the card handed in at registration time in `main.cpp`. Note that `Launcher` is _not_
   in the shell's `apps_` list, so whichever wins, the launcher never needs a card of itself.
   FR-15 does not decide this and all three are defensible — so per NFR-16 it needs an ADR before
   code.
@@ -446,28 +562,28 @@ discovered halfway through:
 - **The zoom on `Home` is the expensive half, and it splits cleanly.** Animating the cards
   themselves is free: the launcher gets `update(dt)` like any app and can slide or scale its own
   content over the first frames after `onEnter`, with the shell none the wiser. Zooming the
-  *outgoing app's* frame is the costly part — the launcher may not render another app, so the
+  _outgoing app's_ frame is the costly part — the launcher may not render another app, so the
   shell would have to grow a transition state, and the shell's one-frame deferred switch exists
   precisely so a request from inside the launcher's `onInput` cannot tear down a running app.
   **Decided 2026-07-27: build the launcher-owned animation, skip the cross-app zoom.** It is
   most of the perceived polish for none of the architectural cost, and it can be revisited
   without undoing anything.
-- **The centre card already lands on the last app, by accident.** `Launcher` has no `onEnter`
-  override and lives for the whole run, so `selected_` simply persists — come back with `Home`
-  and the selection is still the app you started. It holds for a crash-dropped app too (FR-17),
-  and at boot only because both the shell's first app and the selection are index 0. It breaks
-  exactly once **FR-19** lands in v0.3 and a restored app is not index 0. So: nothing to do now,
-  and when FR-19 arrives, pass `last_app_` in and the invariant stops being a coincidence.
+- **The centre card lands on the last app — deliberately, since 2026-07-28.** It used to be an
+  accident: `Launcher` has no `onEnter` override and lives for the whole run, so `selected_`
+  simply persisted, and at boot it agreed with the running app only because both were index 0.
+  FR-19 broke exactly that, as predicted here — a restored app is not index 0. The shell now calls
+  `launcher_->select(index)` whenever an app becomes active, so the invariant holds by
+  construction, including after a restart and after a crash-dropped app (FR-17).
 
 ## Dropped
 
 Not unscheduled — excluded, per NG7 in [requirements.md](requirements.md). Recorded so the
 question does not resurface.
 
-| App | Reason |
-| --- | --- |
+| App           | Reason                                                                                                                                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Chess puzzles | A board plus piece glyphs on 64x32 leaves roughly 4x4 pixels per square, and stepping an encoder through 64 squares is tedious. Reshaping it enough to fit (cropped board, mate-in-one only) would leave something that is no longer chess. |
-| Wordle | Five columns of six rows plus a letter picker is not legible at this size, and selecting from 26 letters by rotation is slow. |
+| Wordle        | Five columns of six rows plus a letter picker is not legible at this size, and selecting from 26 letters by rotation is slow.                                                                                                               |
 
 The panel size is the reason, so this only changes if the hardware does. Both would also have
 been the only apps needing datasets shipped alongside the binary — dropping them removes that

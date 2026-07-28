@@ -11,6 +11,7 @@
 #include "led-matrix.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 
 namespace matrixos
@@ -86,6 +87,12 @@ void MatrixDisplay::clear()
 {
     back_->Clear();
     matrix_->Clear();
+}
+
+void MatrixDisplay::setBrightness(int percent)
+{
+    matrix_->SetBrightness(
+        static_cast<std::uint8_t>(std::clamp(percent, 1, 100))); // range starts at 1
 }
 
 } // namespace matrixos
