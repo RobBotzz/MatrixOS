@@ -1,5 +1,7 @@
 # MatrixOS
 
+[![CI](https://github.com/RobBotzz/MatrixOS/actions/workflows/pi-zero-ci.yml/badge.svg)](https://github.com/RobBotzz/MatrixOS/actions/workflows/pi-zero-ci.yml)
+
 An application host for a 64x32 RGB LED matrix panel driven by a Raspberry Pi Zero 2 W,
 operated with a single rotary encoder. It runs small self-contained "apps" — animations,
 timers, games, and later network-backed displays — and lets you switch between them from
@@ -16,6 +18,16 @@ app the device starts with, and it comes back to the app that was running before
 out. Every write is atomic, so pulling the plug costs at most the most recent one. The same source
 runs in a terminal simulator on the development machine. Next up is v0.4, the appliance — see
 [docs/roadmap.md](docs/roadmap.md).
+
+## Apps
+
+| App | What it does |
+| --- | --- |
+| Plasma | Four animated variants; rotate to switch, press to freeze. |
+| Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
+| Snake | Rotate to turn, press to start; keeps a persistent high score. |
+| Settings | Brightness and which app the device starts with. |
+| Test Pattern | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |
 
 ## Documentation
 
