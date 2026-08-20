@@ -47,7 +47,7 @@ constexpr int kMaxStepsPerFrame = 4; // caps catch-up after a stall
 
 void drawCentered(Surface &surface, int y, std::string_view text, Color color, int scale = 1)
 {
-    drawText(surface, (surface.width() - textWidth(text, scale)) / 2, y, text, color, scale);
+    drawTextCentered(surface, y, text, color, scale);
 }
 
 void drawFrame(Surface &surface)

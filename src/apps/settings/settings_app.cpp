@@ -34,7 +34,7 @@ constexpr int kBrightnessTop = 11; // scale 2, so it occupies rows 11 to 24
 constexpr int kBarTop = 27;
 constexpr int kBarHeight = 3;
 constexpr int kBarMargin = 4;
-constexpr int kStartupTop = 16;
+constexpr int kValueTop = 16;
 constexpr int kCursorTop = 25;
 constexpr int kDotRow = 31;
 constexpr int kDotGap = 4;
@@ -43,7 +43,7 @@ constexpr float kBlinkPeriod = 0.8F;
 
 void drawCentered(Surface &surface, int y, std::string_view text, Color color, int scale = 1)
 {
-    drawText(surface, (surface.width() - textWidth(text, scale)) / 2, y, text, color, scale);
+    drawTextCentered(surface, y, text, color, scale);
 }
 
 void drawPageDots(Surface &surface, std::size_t pages, std::size_t current)
@@ -56,6 +56,27 @@ void drawPageDots(Surface &surface, std::size_t pages, std::size_t current)
         surface.setPixel(x, kDotRow, page == current ? kActive : kIdle);
         x += kDotGap;
     }
+}
+
+/// Wraps in both directions, which is the only sensible behaviour for a list on
+/// an endless knob.
+std::size_t step(std::size_t index, int detents, std::size_t count)
+{
+    const int total = static_cast<int>(count);
+    const int next = (static_cast<int>(index) + detents) % total;
+    return static_cast<std::size_t>((next + total) % total);
+}
+
+std::size_t defaultZoneIndex()
+{
+    for (std::size_t i = 0; i < settings::kTimeZones.size(); ++i)
+    {
+        if (settings::kTimeZones[i].zone == settings::kDefaultTimeZone)
+        {
+            return i;
+        }
+    }
+    return 0;
 }
 
 void drawBar(Surface &surface, int y, int percent, Color color)
@@ -96,6 +117,18 @@ void SettingsApp::onEnter()
         }
     }
 
+    const std::string zone = settings_.getString(settings::kTimeZone, settings::kDefaultTimeZone);
+
+    zone_index_ = 0;
+    for (std::size_t i = 0; i < settings::kTimeZones.size(); ++i)
+    {
+        if (settings::kTimeZones[i].zone == zone)
+        {
+            zone_index_ = i;
+            break;
+        }
+    }
+
     page_ = Page::Brightness;
     editing_ = false;
 }
@@ -111,6 +144,11 @@ std::string_view SettingsApp::startup() const
     return startup_index_ == 0 ? settings::kStartupLast : apps_[startup_index_ - 1];
 }
 
+std::string_view SettingsApp::timeZone() const
+{
+    return settings::kTimeZones[zone_index_].zone;
+}
+
 void SettingsApp::onInput(const InputEvent &event)
 {
     switch (event.type)
@@ -122,7 +160,9 @@ void SettingsApp::onInput(const InputEvent &event)
         }
         else
         {
-            page_ = page_ == Page::Brightness ? Page::Startup : Page::Brightness;
+            const int next = (static_cast<int>(page_) + event.delta) % static_cast<int>(kPageCount);
+            page_ = static_cast<Page>((next + static_cast<int>(kPageCount)) %
+                                      static_cast<int>(kPageCount));
         }
         break;
 
@@ -130,13 +170,15 @@ void SettingsApp::onInput(const InputEvent &event)
         editing_ = !editing_;
         if (!editing_)
         {
-            logInfo("settings: brightness {}, startup '{}'", brightness_, startup());
+            logInfo("settings: brightness {}, startup '{}', zone '{}'", brightness_, startup(),
+                    timeZone());
         }
         break;
 
     case InputType::LongPress:
         brightness_ = settings::kDefaultBrightness;
         startup_index_ = 0;
+        zone_index_ = defaultZoneIndex();
         editing_ = false;
         writeThrough();
         logInfo("settings reset to defaults");
@@ -149,16 +191,20 @@ void SettingsApp::onInput(const InputEvent &event)
 
 void SettingsApp::changeValue(int detents)
 {
-    if (page_ == Page::Brightness)
+    switch (page_)
     {
+    case Page::Brightness:
         brightness_ = std::clamp(brightness_ + detents * settings::kBrightnessStep,
                                  settings::kMinBrightness, settings::kMaxBrightness);
-    }
-    else
-    {
-        const int count = static_cast<int>(apps_.size()) + 1;
-        const int next = (static_cast<int>(startup_index_) + detents) % count;
-        startup_index_ = static_cast<std::size_t>((next + count) % count);
+        break;
+
+    case Page::Startup:
+        startup_index_ = step(startup_index_, detents, apps_.size() + 1);
+        break;
+
+    case Page::TimeZone:
+        zone_index_ = step(zone_index_, detents, settings::kTimeZones.size());
+        break;
     }
 
     writeThrough();
@@ -169,6 +215,7 @@ void SettingsApp::writeThrough()
     // Marks the section dirty only; save() happens on exit, not per detent.
     settings_.setInt(settings::kBrightness, brightness_);
     settings_.setString(settings::kStartup, startup());
+    settings_.setString(settings::kTimeZone, timeZone());
 }
 
 void SettingsApp::update(Duration dt)
@@ -178,22 +225,25 @@ void SettingsApp::update(Duration dt)
 
 void SettingsApp::render(Surface &surface)
 {
-    const bool page_is_brightness = page_ == Page::Brightness;
+    static constexpr std::string_view kTitles[kPageCount] = {"BRIGHTNESS", "START WITH",
+                                                             "TIME ZONE"};
 
-    drawCentered(surface, kLabelTop, page_is_brightness ? "BRIGHTNESS" : "START WITH",
+    drawCentered(surface, kLabelTop, kTitles[static_cast<std::size_t>(page_)],
                  editing_ ? kIdle : kActive);
 
     const Color value_color = editing_ ? kAccent : kActive;
 
-    if (page_is_brightness)
+    if (page_ == Page::Brightness)
     {
         drawCentered(surface, kBrightnessTop, std::to_string(brightness_), value_color, 2);
         drawBar(surface, kBarTop, brightness_, value_color);
     }
     else
     {
-        const std::string_view label = startup_index_ == 0 ? kLastAppLabel : startup();
-        drawCentered(surface, kStartupTop, label, value_color);
+        const std::string_view label = page_ == Page::Startup
+                                           ? (startup_index_ == 0 ? kLastAppLabel : startup())
+                                           : settings::kTimeZones[zone_index_].label;
+        drawCentered(surface, kValueTop, label, value_color);
 
         if (editing_ && std::fmod(blink_, kBlinkPeriod) < kBlinkPeriod / 2.0F)
         {
@@ -206,7 +256,7 @@ void SettingsApp::render(Surface &surface)
         }
     }
 
-    drawPageDots(surface, 2, page_is_brightness ? 0 : 1);
+    drawPageDots(surface, kPageCount, static_cast<std::size_t>(page_));
 }
 
 } // namespace matrixos

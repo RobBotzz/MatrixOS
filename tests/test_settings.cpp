@@ -176,13 +176,59 @@ TEST_CASE("a hold restores the defaults")
     CHECK_FALSE(app.editing());
 }
 
-TEST_CASE("both pages draw something and nothing lands outside the panel")
+TEST_CASE("the time zone is a name, and it walks the curated list")
 {
     StateStore store = StateStore::inMemory();
     SettingsApp app(store, kApps);
     app.onEnter();
 
-    for (const auto page : {SettingsApp::Page::Brightness, SettingsApp::Page::Startup})
+    CHECK(app.timeZone() == settings::kDefaultTimeZone);
+
+    edit(app, SettingsApp::Page::TimeZone);
+    send(app, InputType::Rotate, +1);
+
+    CHECK(app.timeZone() != settings::kDefaultTimeZone);
+    CHECK(store.section(settings::kSection).getString(settings::kTimeZone, "") == app.timeZone());
+
+    // A full turn through the list comes back to where it started.
+    send(app, InputType::Rotate, static_cast<int>(settings::kTimeZones.size()));
+    CHECK(app.timeZone() != settings::kDefaultTimeZone);
+    send(app, InputType::Rotate, -1);
+    CHECK(app.timeZone() == settings::kDefaultTimeZone);
+}
+
+TEST_CASE("a stored zone that is not on the list falls back to the default")
+{
+    StateStore store = StateStore::inMemory();
+    store.section(settings::kSection).setString(settings::kTimeZone, "Mars/Olympus");
+
+    SettingsApp app(store, kApps);
+    app.onEnter();
+
+    CHECK(app.timeZone() == settings::kTimeZones.front().zone);
+}
+
+TEST_CASE("browsing wraps in both directions across all three pages")
+{
+    StateStore store = StateStore::inMemory();
+    SettingsApp app(store, kApps);
+    app.onEnter();
+
+    send(app, InputType::Rotate, -1);
+    CHECK(app.page() == SettingsApp::Page::TimeZone);
+
+    send(app, InputType::Rotate, +1);
+    CHECK(app.page() == SettingsApp::Page::Brightness);
+}
+
+TEST_CASE("every page draws something and nothing lands outside the panel")
+{
+    StateStore store = StateStore::inMemory();
+    SettingsApp app(store, kApps);
+    app.onEnter();
+
+    for (const auto page :
+         {SettingsApp::Page::Brightness, SettingsApp::Page::Startup, SettingsApp::Page::TimeZone})
     {
         while (app.page() != page)
         {

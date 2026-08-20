@@ -1,0 +1,21 @@
+{
+  "name": "matrixos-config",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "description": "The device's configuration page. Built to a single inlined index.html, then compiled into the binary (ADR-0014).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "embed": "vite build && python3 ../tools/bundle_to_header.py"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.9",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

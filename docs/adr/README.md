@@ -19,6 +19,10 @@ decision consciously left open is visibly different from one that was never cons
 | [0009](0009-dedicated-home-button.md) | A dedicated home button alongside the encoder | Accepted |
 | [0010](0010-own-encoder-decoding.md) | Decode the encoder ourselves rather than using the kernel driver | Accepted |
 | [0011](0011-state-store-format.md) | One key-value file per namespace for persisted state | Accepted |
+| [0012](0012-own-http-server.md) | An HTTP server of our own | Accepted |
+| [0013](0013-wifi-provisioning-via-networkmanager.md) | WiFi provisioning through NetworkManager, driven by `nmcli` | Accepted |
+| [0014](0014-config-page-in-the-binary.md) | Two web pages, built differently, both compiled into the binary | Accepted |
+| [0015](0015-time-provider-and-unknown-time.md) | A time provider, and an explicit "time unknown" state | Accepted |
 
 ## Conventions
 

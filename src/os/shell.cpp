@@ -8,6 +8,8 @@
 
 #include "hal/display.h"
 #include "hal/input.h"
+#include "os/clock.h"
+#include "os/provisioning.h"
 #include "os/settings.h"
 #include "os/state.h"
 
@@ -32,15 +34,33 @@ Shell::Shell(Display &display, Input &input, StateStore &store, Duration targetF
 {
 }
 
-void Shell::add(std::unique_ptr<App> app)
+std::size_t Shell::add(std::unique_ptr<App> app)
 {
     if (app == nullptr)
     {
-        return;
+        return apps_.size();
     }
 
     logInfo("registered app '{}'", app->name());
     apps_.push_back(std::move(app));
+    return apps_.size() - 1;
+}
+
+void Shell::useTimeProvider(TimeProvider &time)
+{
+    time_ = &time;
+}
+
+void Shell::superviseSetup(Provisioning &provisioning, std::size_t setupApp)
+{
+    if (setupApp >= apps_.size())
+    {
+        logError("superviseSetup: no app at index {}", setupApp);
+        return;
+    }
+
+    provisioning_ = &provisioning;
+    setup_index_ = setupApp;
 }
 
 std::string_view Shell::activeName() const
@@ -89,6 +109,8 @@ void Shell::run(const std::function<bool()> &shouldStop)
         {
             dispatch(event);
         }
+
+        applySetupState(dt);
         applyPending();
 
         // Apps get a clean surface, so none of them has to remember to clear.
@@ -99,6 +121,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
         }
 
         applyBrightness();
+        applyTimeZone();
         display_.present(frame_);
         ++frames_;
 
@@ -157,6 +180,70 @@ void Shell::applyBrightness()
     }
 }
 
+void Shell::applyTimeZone()
+{
+    if (time_ == nullptr)
+    {
+        return;
+    }
+
+    const std::string wanted = store_.section(settings::kSection)
+                                   .getString(settings::kTimeZone, settings::kDefaultTimeZone);
+
+    if (wanted != time_zone_)
+    {
+        time_zone_ = wanted;
+        time_->setTimeZone(wanted);
+    }
+}
+
+void Shell::applySetupState(Duration dt)
+{
+    if (provisioning_ == nullptr || !setup_index_.has_value())
+    {
+        return;
+    }
+
+    if (leaving_setup_.has_value())
+    {
+        *leaving_setup_ -= dt;
+        if (*leaving_setup_ <= Duration::zero())
+        {
+            leaving_setup_.reset();
+
+            // Still only if the setup app is the one on show: whoever navigated
+            // elsewhere while the success screen was up meant it.
+            if (active_ == apps_[*setup_index_].get())
+            {
+                pending_ = Target::App;
+                pending_index_ = startupApp();
+            }
+        }
+    }
+
+    const bool needs_setup = provisioning_->needsSetup();
+    if (needs_setup == setup_shown_)
+    {
+        return; // only the transition acts, so the user can still navigate away
+    }
+    setup_shown_ = needs_setup;
+
+    if (needs_setup)
+    {
+        leaving_setup_.reset(); // setup came back; nothing to hand over
+        pending_ = Target::App;
+        pending_index_ = *setup_index_;
+        return;
+    }
+
+    // Setup is over — but the screen that says so has not been on the panel for
+    // a single frame yet. Hold it, then hand over.
+    if (active_ == apps_[*setup_index_].get())
+    {
+        leaving_setup_ = setup_hold_;
+    }
+}
+
 void Shell::installLauncher()
 {
     launcher_ = std::make_unique<Launcher>(appNames(),
@@ -195,9 +282,15 @@ void Shell::activateApp(std::size_t index)
 
     last_app_ = index;
 
-    StateSection &shell = store_.section(kShellSection);
-    shell.setString(kLastApp, apps_[index]->name());
-    shell.save();
+    // The setup app is never remembered as the last one. It is shown because the
+    // device needed something, not because the user chose it, and restoring it
+    // after a reboot would put a connected device back on a setup screen.
+    if (setup_index_ != index)
+    {
+        StateSection &shell = store_.section(kShellSection);
+        shell.setString(kLastApp, apps_[index]->name());
+        shell.save();
+    }
 
     if (launcher_ != nullptr)
     {

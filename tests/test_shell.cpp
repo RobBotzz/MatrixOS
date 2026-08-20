@@ -4,10 +4,14 @@
 // the terms of the GNU General Public License, version 2, as published by the
 // Free Software Foundation. See LICENSE for details.
 
+#include "apps/setup/setup_app.h"
+#include "fake_clock.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
 #include "hal/input.h"
+#include "net/fake_wifi.h"
 #include "os/app.h"
+#include "os/provisioning.h"
 #include "os/settings.h"
 #include "os/shell.h"
 #include "os/state.h"
@@ -26,6 +30,11 @@ using matrixos::test::TempDir;
 
 namespace
 {
+
+constexpr Provisioning::Timing kInstantSetup{std::chrono::milliseconds(0),
+                                             std::chrono::milliseconds(0)};
+
+const Identity kTestIdentity{"a3f1", "matrixos-a3f1", "MatrixOS-a3f1"};
 
 /// Records what the shell sends it. No hardware, no terminal — which is the whole
 /// point of the Display interface (ADR-0002).
@@ -150,6 +159,18 @@ std::function<bool()> stopAfterTracking(const Shell &shell, unsigned long frames
     return [&shell, frames, &launcherPerFrame]
     {
         launcherPerFrame.push_back(shell.launcherActive());
+        return shell.frameCount() >= frames;
+    };
+}
+
+/// Same again for the active app's name, which `run()` also clears on its way
+/// out.
+std::function<bool()> stopAfterNaming(const Shell &shell, unsigned long frames,
+                                      std::vector<std::string> &namePerFrame)
+{
+    return [&shell, frames, &namePerFrame]
+    {
+        namePerFrame.emplace_back(shell.activeName());
         return shell.frameCount() >= frames;
     };
 }
@@ -483,4 +504,209 @@ TEST_CASE("a brightness outside the allowed range is clamped, not obeyed")
     shell.run(stopAfter(shell, 2));
 
     CHECK(display.brightness == settings::kMinBrightness);
+}
+
+// ---------------------------------------------------------------------------
+// v0.4: the shell shows the setup app while the device needs the user, and
+// applies the time zone the way it applies brightness.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("an unconfigured device lands on the setup app rather than on the startup one")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+    REQUIRE(provisioning.needsSetup());
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t setup = shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+    shell.superviseSetup(provisioning, setup);
+
+    std::vector<std::string> active;
+    shell.run(stopAfterNaming(shell, 3, active));
+
+    CHECK(active.back() == "Setup");
+}
+
+TEST_CASE("when setup finishes, the device moves on by itself")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t setup = shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+    shell.superviseSetup(provisioning, setup);
+    shell.setSetupSuccessHold(Duration::zero()); // the hold has its own case below
+
+    // One session, with the world changing inside it. Two run() calls would not
+    // do: run() activates the startup app again every time, so a state change
+    // between two of them is not the same thing as one during a session.
+    std::vector<std::string> active;
+    shell.run(
+        [&]
+        {
+            active.emplace_back(shell.activeName());
+            if (shell.frameCount() == 3)
+            {
+                provisioning.requestConnect("Kitchen", "");
+                provisioning.waitForIdle();
+            }
+            return shell.frameCount() >= 30;
+        });
+
+    // Frame 0 is recorded before the shell has looked at provisioning at all, so
+    // the startup app is what it sees first; the take-over lands one frame later.
+    REQUIRE(active.size() > 3);
+    CHECK(active[1] == "Setup");
+    CHECK(active.back() == "First");
+}
+
+TEST_CASE("the connected screen stays up long enough to be read")
+{
+    // Setup stops being needed the instant the join succeeds. Without the hold
+    // the success screen would be replaced in the frame it first appeared, and
+    // the panel would never confirm anything to the person standing in front of
+    // it — which is the whole reason the setup app exists (FR-35).
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t setup = shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+    shell.superviseSetup(provisioning, setup);
+    shell.setSetupSuccessHold(Duration{60.0F}); // longer than this test can run
+
+    std::vector<std::string> active;
+    shell.run(
+        [&]
+        {
+            active.emplace_back(shell.activeName());
+            if (shell.frameCount() == 3)
+            {
+                provisioning.requestConnect("Kitchen", "");
+                provisioning.waitForIdle();
+            }
+            return shell.frameCount() >= 30;
+        });
+
+    REQUIRE_FALSE(provisioning.needsSetup());
+    CHECK(active.back() == "Setup");
+}
+
+TEST_CASE("the setup app is never remembered as the last app")
+{
+    // Otherwise a device that was set up once would boot into a setup screen it
+    // no longer needs, and FR-19 would fight FR-35.
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t setup = shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+    shell.superviseSetup(provisioning, setup);
+
+    std::vector<std::string> active;
+    shell.run(stopAfterNaming(shell, 3, active));
+    REQUIRE(active.back() == "Setup");
+
+    CHECK(store.section("shell").getString("last_app", "") == "First");
+}
+
+TEST_CASE("a device that is already online never sees the setup app")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    wifi.pretendJoined("Kitchen");
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t setup = shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+    shell.superviseSetup(provisioning, setup);
+
+    std::vector<std::string> active;
+    shell.run(stopAfterNaming(shell, 3, active));
+
+    CHECK(active.back() == "First");
+}
+
+TEST_CASE("without superviseSetup the setup app is just another launcher entry")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+
+    FakeWifi wifi;
+    Provisioning provisioning(wifi, store, kInstantSetup);
+    provisioning.begin();
+    provisioning.waitForIdle();
+
+    Calls first;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    shell.add(std::make_unique<SetupApp>(provisioning, kTestIdentity));
+
+    std::vector<std::string> active;
+    shell.run(stopAfterNaming(shell, 3, active));
+
+    CHECK(active.back() == "First");
+}
+
+TEST_CASE("the time zone reaches the provider, and only when it changes")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    StateStore store = StateStore::inMemory();
+    test::FakeClock clock;
+
+    Calls calls;
+    Shell shell = makeShell(display, input, store);
+    shell.add(std::make_unique<SpyApp>(calls));
+    shell.useTimeProvider(clock);
+
+    shell.run(stopAfter(shell, 3));
+    CHECK(clock.zone == settings::kDefaultTimeZone);
+
+    clock.zone.clear(); // a second write would put it back
+    shell.run(stopAfter(shell, 6));
+    CHECK(clock.zone.empty());
+
+    store.section(settings::kSection).setString(settings::kTimeZone, "Asia/Tokyo");
+    shell.run(stopAfter(shell, 9));
+    CHECK(clock.zone == "Asia/Tokyo");
 }

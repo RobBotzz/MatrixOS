@@ -286,6 +286,59 @@ v0.3 is done when all of the following hold:
     contract, Snake's rules over an exact number of ticks, and a settings round-trip (NFR-12,
     NFR-13).
 
+### 5.3 v0.4 — appliance
+
+Written 2026-07-29, before the code. This is the milestone where the project stops being a
+program on the maintainer's Pi. Its criteria are therefore written from the position of
+**someone who did not build it**: a person, a power supply, a phone.
+
+Two of them cannot be checked on a development machine at all (9 and 10 need a real card and a
+real power cut), and that is deliberate — an appliance criterion that a simulator can satisfy
+is not testing the thing the milestone is about.
+
+**Status, 2026-08-20: 3 and 4 met on the development Pi, 13 met in CI.** The remaining criteria
+are open, and one property of that Pi is why: it was configured by hand rather than by
+`provision.sh`, so it can demonstrate the software and says nothing about a unit built from the
+image.
+
+v0.4 is done when all of the following hold:
+
+1. **A blank card becomes a device with one script.** Flash Raspberry Pi OS Lite, run
+   `provision.sh`, reboot — and the panel lights up. No manual step exists outside that script,
+   and `docs/device-setup.md` describes nothing the script does not do (NFR-21).
+2. **Two units from the same image do not collide.** Hostname and setup access-point name are
+   derived from the CPU serial on first boot, so two devices on one network answer to different
+   names (FR-32).
+3. **An unconfigured device asks for help on the panel.** With no known network in range it opens
+   its access point, and the panel shows the network name to join — not a blinking LED, not a
+   black screen (FR-33, FR-35, NFR-23).
+4. **A phone completes setup end to end.** Join the access point, land on the setup page without
+   typing an address, pick the network from the scan list, enter the password, and the panel moves
+   through connecting to connected (FR-33, FR-34, FR-35).
+5. **A wrong password does not strand the device.** It reports the failure on the panel, returns
+   to access-point mode, and a second attempt with the right password succeeds — without a power
+   cycle (FR-34, FR-35).
+6. **Online, the device is reachable by name and states its version.** `matrixos-xxxx.local`
+   serves the configuration page, which shows the running build (FR-36, FR-41).
+7. **The clock never lies.** Before `systemd-timesyncd` reports a sync the panel says the time is
+   unknown; afterwards it shows local time in the configured zone, and changing the zone in the
+   settings changes what the panel shows (C-9, FR-25).
+8. **Factory reset needs no terminal.** Triggered from the configuration page, the device forgets
+   the WiFi credentials and comes back up in access-point mode (FR-42).
+9. **Pulling the plug is safe, repeatedly.** Ten power cuts during normal operation — including
+   during a state write — leave a device that boots and a store that holds either the old or the
+   new value (NFR-19, FR-40).
+10. **Nothing is written to the card in normal operation.** Root filesystem read-only, swap gone,
+    journal in RAM; the writable partition is the only thing that changes, and only when the
+    device is asked to remember something (NFR-20).
+11. **The shipped image carries no maintainer secrets.** No WiFi profile, no SSH host key shared
+    with another unit, no token, no shell history, no state left over from the build (NFR-22).
+12. **The web server never costs a frame.** The panel holds 60 FPS while the configuration page is
+    being loaded and used (NFR-1, FR-27).
+13. **CI is green for host and aarch64**, and the suite covers HTTP request routing, the
+    provisioning state machine including the failure path, and the clock's unknown-time state
+    (NFR-12, NFR-13).
+
 ---
 
 ## 6. Known open questions
@@ -300,7 +353,7 @@ v0.3 is done when all of the following hold:
 | Q-6 | In-process HTTP client vs. separate service for network apps. Deliberately deferred, see [ADR-0004](adr/0004-network-app-runtime.md).                                          | first network app  |
 | Q-7 | ~~In what format is app state stored?~~ **Answered — one `key=value` file per namespace, see [ADR-0011](adr/0011-state-store-format.md).** The location was never open (FR-39).                                                      | v0.3               |
 | Q-8 | ~~Two-tier hold or a dedicated home button?~~ **Answered — see Resolved below.** | — |
-| Q-9 | What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32? A version-2 code plus quiet zone needs roughly 33x33 modules, so it is marginal — test with real phones before designing around it. | v0.4 |
+| Q-9 | ~~What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32?~~ **Answered — see Resolved below.** | v0.4 |
 | Q-10 | Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)? If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.7 |
 
 ### Resolved
@@ -389,6 +442,27 @@ another library.
 The timing constants — 600 ms for a hold, 10 ms of debounce, four signal transitions per
 detent — live in `GestureRecognizer::Timing` and `QuadratureDecoder`, and both are covered by
 tests that feed synthetic timestamps rather than waiting.
+
+**Q-9 — the setup screen, and the QR code.** **No QR code.** It does not fit, and the arithmetic
+is not marginal after all once it is done properly.
+
+A WiFi-join payload — `WIFI:S:MatrixOS-a3f1;T:nopass;;` — is 30 bytes, which needs a version-2
+symbol (25x25 modules; version 1 holds 17 bytes in byte mode). The specified quiet zone is four
+modules on every side, so the smallest correct rendering is **33x33 pixels on a 32-pixel-high
+panel**. Shrinking the quiet zone to two modules would fit at 29x29, but that trades the one
+margin a camera needs against an emissive, low-resolution, high-contrast source — the conditions
+under which scanners already struggle. And a QR code that fails to scan on someone's kitchen table
+is worse than no QR code, because there is nothing else on screen to fall back to.
+
+The panel shows text instead, in three lines that answer the user's three questions in order:
+`JOIN WIFI` at the top, `MatrixOS` below it, and the four-character serial suffix in double-size
+digits at the bottom — the suffix is the only part that differs between units, so it gets the size.
+The full name at scale 1 would be 77 pixels wide on a 64-pixel panel, which is what forces the
+split and, conveniently, produces the right emphasis.
+
+This closes the question for the setup screen. If a QR code is ever wanted for something else, the
+constraint to remember is 32 rows: only a version-1 symbol (21x21 plus quiet zone = 29x29) fits
+correctly, which caps the payload at 17 bytes.
 
 **Note on `DoublePress` (FR-8).** The encoder backend does not produce it. A single press can
 only be confirmed once the window for a second one has elapsed, so enabling double-press

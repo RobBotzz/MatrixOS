@@ -1,0 +1,24 @@
+// Copyright (C) 2026 RobBotzz
+//
+// This program is free software; you can redistribute it and/or modify it under
+// the terms of the GNU General Public License, version 2, as published by the
+// Free Software Foundation. See LICENSE for details.
+//
+// Generated from src/os/version.h.in by CMake at configure time.
+
+#pragma once
+
+namespace matrixos
+{
+
+/// Shown on the configuration page (FR-41). Without an update channel, a
+/// reported problem can otherwise not be traced to a build (C-10).
+constexpr const char *kVersion = "@MATRIXOS_VERSION@";
+
+/// The commit the tree was on when CMake last configured. "unknown" outside a
+/// git checkout, and stale if the tree moved without reconfiguring — which is
+/// why the version above is the number that gets quoted, and this one is the
+/// hint that narrows it down.
+constexpr const char *kBuildCommit = "@MATRIXOS_COMMIT@";
+
+} // namespace matrixos

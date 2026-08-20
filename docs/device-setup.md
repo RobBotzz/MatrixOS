@@ -1,11 +1,25 @@
 # Device setup
 
-An exact record of every manual step applied to a Pi to make it run MatrixOS. This exists for
-two reasons: NFR-21 requires that a device can be rebuilt from a blank card with no
-undocumented steps, and [ADR-0007](adr/0007-appliance-provisioning.md) turns this list into
-`provision.sh` when the appliance milestone (v0.4) arrives.
+An exact record of every step applied to a Pi to make it run MatrixOS, and **why** each one is
+needed. NFR-21 requires that a device can be rebuilt from a blank card with no undocumented
+steps.
 
-Status of the development device (`robinsmatrix`), 2026-07-28.
+> **Since v0.4 the steps below are automated.** `pi-deployment/provision.sh` performs all of
+> them, and [ADR-0007](adr/0007-appliance-provisioning.md) makes that script the specification
+> of a device: if a setting is not in it, it does not exist on a shipped unit. This document is
+> the reasoning behind the script, not a second copy of it — when the two disagree, the script
+> is right and this file has a bug.
+>
+> Two scripts, because one of them cannot run on the device:
+>
+> | Script | Runs on | Does |
+> | --- | --- | --- |
+> | `prepare-card.sh` | the development machine, card in a reader, **before first boot** | shrinks the root filesystem, creates the `matrixos-state` partition |
+> | `provision.sh` | the device | everything else |
+>
+> Turning a provisioned device into a shipped image is [image-build.md](image-build.md).
+
+Status of the development device (`robinsmatrix`), 2026-07-29.
 
 ## 1. Operating system
 
@@ -224,6 +238,23 @@ ls -la /var/lib/matrixos          # cat any *.conf to see what the device rememb
 `MATRIXOS_STATE_DIR` overrides the location, which is how a test run stays out of the real
 device's state.
 
+### On its own partition, from v0.4
+
+The overlay filesystem makes everything written to `/` live in RAM and vanish at the next
+reboot ([ADR-0008](adr/0008-power-loss-resilience.md)). State therefore needs a partition the
+overlay does not cover — created by `prepare-card.sh`, labelled `matrixos-state`, 256 MB by
+default (`MATRIXOS_STATE_MB` changes it), and mounted here by `provision.sh`:
+
+```
+/dev/disk/by-label/matrixos-state  /var/lib/matrixos  ext4  defaults,noatime,nofail  0  2
+/var/lib/matrixos/network  /etc/NetworkManager/system-connections  none  bind,nofail  0  0
+```
+
+**The second line is the one that is easy to miss.** NetworkManager keeps WiFi credentials in
+`/etc/NetworkManager/system-connections`, which the overlay covers — so without the bind mount
+a device would forget its network on every reboot while appearing to remember everything else.
+That directory stays `root:root 0700`; only MatrixOS's own `*.conf` files belong to `daemon`.
+
 ## 7. Network
 
 Two WiFi profiles for two locations. Raspberry Pi OS Trixie configures the network through
@@ -247,20 +278,72 @@ also the mechanism FR-36 will use for the configuration page.
 > expansion and the command fails with `event not found`.
 
 For an appliance image this directory is exactly what NFR-22 requires to be scrubbed: the
-profiles contain the WiFi passwords in cleartext.
+profiles contain the WiFi passwords in cleartext. [image-build.md](image-build.md) does that
+before the image is taken.
 
-## 8. Still open on this device
+### Provisioning a device that has never seen a network — from v0.4
 
-Everything in sections 1 to 5 and 7 is verified in place. Section 6 is the one step v0.3 adds and
-it has to be applied once, by hand, before the device can remember anything.
+A shipped unit joins nothing on its own. Three pieces of configuration make the setup flow work
+([ADR-0013](adr/0013-wifi-provisioning-via-networkmanager.md)); all three are written by
+`provision.sh`.
 
-What is deliberately **not** applied yet, because it belongs to the appliance milestone (v0.4,
-[ADR-0008](adr/0008-power-loss-resilience.md)):
+**The access-point profile**, created per unit by the identity service because its SSID carries
+the CPU serial (FR-32):
 
-- Read-only root filesystem with a separate writable partition for state.
-- `journald` set to `Storage=volatile` with a 16 MB cap.
-- Swap disabled and `noatime` on mounts.
+```bash
+nmcli connection add type wifi ifname wlan0 con-name matrixos-setup \
+  autoconnect no ssid "MatrixOS-a3f1" \
+  802-11-wireless.mode ap 802-11-wireless.band bg \
+  ipv4.method shared ipv6.method ignore
+```
 
-Until those are in place, pulling the power can in principle corrupt the card. That is
-acceptable for a development device and unacceptable for one handed to somebody else, which is
-exactly why they are scoped to v0.4.
+`autoconnect no` is deliberate: MatrixOS decides when the device needs setting up and brings
+the profile up itself. With one radio (C-8) an access point that came up on its own would take
+the radio away from a client connection that was about to succeed. `ipv4.method shared` is what
+puts the device on **10.42.0.1** and starts a DHCP server — the address the captive-portal
+redirect points at.
+
+**Captive DNS**, in `/etc/NetworkManager/dnsmasq-shared.d/matrixos-captive.conf`:
+
+```
+address=/#/10.42.0.1
+```
+
+Without it the phone's connectivity probe fails to resolve and the phone reports "no internet"
+instead of opening the setup page. HTTP alone is not enough — the redirect only happens if the
+name resolves to us first.
+
+**A polkit rule** in `/etc/polkit-1/rules.d/50-matrixos-networkmanager.rules`, allowing the
+`daemon` user the `org.freedesktop.NetworkManager.*` actions.
+
+> **This is the one that will be forgotten and the one that is hardest to diagnose.** MatrixOS
+> starts as root, and the matrix library drops it to `daemon` as soon as the panel is up (the
+> resolved Q-1). Every `nmcli` call therefore runs as `daemon`, and NetworkManager asks polkit
+> before it changes anything. Without the rule every scan comes back empty and every join
+> fails, on a device whose panel, logs and web page all look perfectly healthy.
+
+## 8. Status of this device
+
+Sections 1 to 7 are in place and verified. From v0.4 the whole list is `provision.sh`, and the
+development device is a device like any other — except that it is deliberately run with
+`--no-readonly`, so the card stays writable for development.
+
+What that costs, and it is worth stating plainly: on a device without the read-only root,
+pulling the power can still corrupt the card. The protections are on shipped units, where they
+belong.
+
+Rebuilding this device from a blank card:
+
+```bash
+# development machine, card in a reader, before the first boot
+sudo pi-deployment/prepare-card.sh /dev/sdX
+
+# on the device
+sudo pi-deployment/provision.sh --no-readonly --keep-hostname
+```
+
+`--keep-hostname` is the one worth knowing about for a device you reach by name every day.
+Without it the unit renames itself to `matrixos-<suffix>` on the next boot (FR-32) and the name
+you have in your shell history stops resolving. The script says so before it changes anything.
+The setup access point is named from the serial either way — two units on one network must not
+collide, and that is what FR-32 is actually for.

@@ -11,9 +11,15 @@
 Description=MatrixOS LED matrix application
 Documentation=https://github.com/RobBotzz/MatrixOS
 
-# Deliberately no network ordering: no app needs the network yet, and waiting
-# for network-online would delay the first picture (NFR-8: visible within 30 s).
-# Add After/Wants=network-online.target when the first network app arrives.
+# Ordered after NetworkManager, because from v0.4 MatrixOS provisions WiFi
+# through it (ADR-0013) and a device that starts first would find nothing to
+# drive.
+#
+# Deliberately NOT network-online.target: that waits for connectivity, and an
+# unconfigured device has none by definition — it would hold the panel dark for
+# the timeout and then show the setup screen anyway (NFR-8: visible within 30 s).
+After=NetworkManager.service
+Wants=NetworkManager.service
 
 [Service]
 Type=simple

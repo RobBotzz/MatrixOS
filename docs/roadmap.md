@@ -1,6 +1,7 @@
 # Roadmap
 
-Status: v0.1, v0.2 and v0.3 complete, v0.4 next. Last revised 2026-07-29.
+Status: v0.1 to v0.3 complete; v0.4 built, its setup flow verified on the development Pi, its
+provisioning not yet tested. Last revised 2026-08-20.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -166,9 +167,10 @@ Done, 2026-07-27 (the encoder):
 `DoublePress` is deliberately not produced by default; the reasoning is with Q-4 in
 [requirements.md](requirements.md).
 
-**Not verified on hardware.** The decoding and timing logic is tested, but the ioctl layer
-cannot be exercised without an encoder wired to GPIO 5/6/13 and a button on 19. That is the
-last open item of v0.1 — acceptance criteria 3 and 4.
+**Not verified on hardware** at the time this was written. The decoding and timing logic is
+tested, but the ioctl layer cannot be exercised without an encoder wired to GPIO 5/6/13 and a
+button on 19. That was the last open item of v0.1 — acceptance criteria 3 and 4, both closed on
+the device the same day; see the milestone header above.
 
 ---
 
@@ -422,7 +424,11 @@ want to test.
 
 ---
 
-## v0.4 — Appliance
+## v0.4 — Appliance 🔨
+
+**Built 2026-07-29, not yet verified on a device.** The code, the provisioning scripts and the
+image procedure are in place; the acceptance criteria that need a radio, a phone and a power
+cut are open. See _Delivered_ below.
 
 **Unlocks:** the project stops being a program on the maintainer's Pi and becomes a device
 someone else can switch on. Decided in
@@ -454,7 +460,168 @@ app that needs it, in v0.7.
 
 **Done when** someone who has never seen the device can take it, a power supply, and their
 phone, and reach a working clock on the panel — and when pulling the plug at any moment
-leaves the device intact.
+leaves the device intact. The acceptance criteria are in
+[requirements.md §5.3](requirements.md#53-v04--appliance), written before the code as v0.3
+established.
+
+### Decided before the code — 2026-07-29
+
+Four ADRs, because four decisions had real alternatives and would otherwise have been made by
+accident halfway through.
+
+**[ADR-0012](adr/0012-own-http-server.md) — the HTTP server is ours**, about 600 lines on its
+own thread with a `poll()` loop over several connections. Two facts decided it against
+cpp-httplib, and both arrived during the discussion rather than before it: uploads left the
+roadmap for an external storage service, which took the library's best argument (multipart)
+with it; and the configuration page became a React app, which stresses exactly the part a
+naive implementation gets wrong — six parallel connections for one page. Building that
+properly is 60 lines. The record names the trigger for revisiting: the day the device has to
+*receive* a file.
+
+**[ADR-0013](adr/0013-wifi-provisioning-via-networkmanager.md) — `nmcli` as a child process.**
+The image already runs NetworkManager, the four operations we need are one command each, and
+the state machine above it is hardware-free and therefore testable. comitup and wifi-connect
+lost on a structural point rather than a technical one: each brings its own web server and UI,
+and our configuration page has to exist anyway for the version, the reset and v0.7's account
+linking — so they add a second device UI instead of removing work.
+
+**[ADR-0014](adr/0014-config-page-in-the-binary.md) — two pages, built differently.** The
+setup portal is plain server-rendered HTML with no JavaScript at all, because it is rendered by
+the captive-portal WebView, which is not a browser; the configuration page is React, because it
+is opened in a real one and it is where the product is judged. Both are compiled into the
+binary through a checked-in generated header — the arrangement `tools/bdf_to_header.py` has had
+since v0.1, and the reason CI and the aarch64 build never see Node.
+
+**[ADR-0015](adr/0015-time-provider-and-unknown-time.md) — the clock is allowed to say it does
+not know.** `systemd-timesyncd` owns NTP; MatrixOS reads one file,
+`/run/systemd/timesync/synchronized`, at most once every two seconds. Until that file exists
+the panel shows `--:--`, because the alternative is a `fake-hwclock` value from three days ago
+displayed with total confidence (C-9).
+
+**Q-9 is closed: no QR code.** A WiFi-join payload needs a version-2 symbol, which with its
+mandatory quiet zone is 33x33 pixels on a 32-pixel panel. Shrinking the quiet zone would fit
+but trades away the one margin a camera needs, on an emissive low-resolution source. The panel
+shows `JOIN WIFI` / `MatrixOS` / the four-character serial suffix in double-height type — the
+suffix is the only part that differs between units, so it gets the size. The full arithmetic is
+with Q-9 in [requirements.md](requirements.md).
+
+**No authentication in v0.4, deliberately.** Anyone on the home network can open the
+configuration page and trigger a factory reset. Nothing worth stealing is on the device yet —
+credentials never leave it and the page never displays them — and the trigger for adding it is
+named: v0.7, when OAuth tokens arrive. The honest limitation recorded with it is that without
+TLS a password protects against a housemate, not against someone watching the LAN.
+
+### Delivered — 2026-07-29
+
+- **`net/http_server`** — HTTP/1.1 on its own thread, `poll()` over up to eight connections,
+  route table, hard limits on headers, body, connection count and time. 19 tests that speak
+  real HTTP over a real loopback socket, because faking the socket would test the fake.
+- **`net/wifi` + `net/nmcli_wifi`** — scan, join, access point, forget, all through `nmcli`
+  with an explicit argument vector and never a shell, so an SSID containing a quote is a string
+  rather than a command. Terse output is split honouring nmcli's own escaping.
+- **`os/provisioning`** — the state machine both threads read:
+  `Waiting → AccessPoint → Connecting → Connected`, with `Failed` bringing the access point
+  back. Requests return immediately and the work runs on a worker thread, because the browser
+  is waiting at the other end of the POST.
+- **`net/portal`** — the setup page, the captive-portal probes for Android, iOS, Windows,
+  Firefox and Ubuntu, the JSON status, and the factory reset.
+- **`web/`** — the React configuration page, 205 KB inlined into one file.
+- **`os/clock` + `apps/clock`** — three faces, a colon that follows the second, and the
+  unknown-time screen.
+- **`apps/setup`** — the four panel states, with walking dots that distinguish a busy device
+  from a stalled one.
+- **`os/identity`** — hostname and access-point name from the CPU serial (FR-32), derived on
+  every boot rather than stored, which is what makes it work on a read-only root.
+- **Shell**: shows the setup app while the device needs the user and steps aside when it does
+  not, and applies the time zone the way it already applied brightness.
+- **`pi-deployment/provision.sh` and `prepare-card.sh`**, plus
+  [image-build.md](image-build.md) for the golden image and its scrub.
+- 213 tests, host and aarch64 builds clean, formatting enforced.
+
+Four things that only became clear while building, each of which changed the code or the
+scripts:
+
+- **Port 80 has to be claimed before the panel exists.** The matrix library drops privileges to
+  `daemon` while creating the panel, and a socket on port 80 can only be bound as root — but
+  the state store must be opened *after* the drop, and the portal needs the store. `claimPort()`
+  is now separate from `start()`, which is the same shape the encoder already had for its GPIO
+  lines.
+- **`nmcli` runs as `daemon` too, and polkit says no.** Without a rule granting that user the
+  NetworkManager actions, every scan returns empty and every join fails — on a device whose
+  panel, logs and web page all look healthy. This is written down in three places on purpose.
+- **NetworkManager's stored connections do not survive a read-only root.** They live in `/etc`,
+  which the overlay puts in RAM, so a device would forget its WiFi on every reboot while
+  remembering its high score. `provision.sh` bind-mounts that directory onto the state
+  partition.
+- **The setup app must never be recorded as the last active app.** FR-19 would otherwise restore
+  it after a reboot and put a perfectly connected device back on a setup screen. One `if`, and
+  a test that would have failed the first time somebody rebooted a finished unit.
+
+**And one that reading the code for the first real device found — 2026-07-29.** The boot job ran
+its grace period only when `wifi.conf` already held a network name. On the first start of v0.4
+that file does not exist yet, while NetworkManager has had the network configured for months — so
+a long-configured device could declare itself unconfigured and open its access point, taking the
+radio away from a connection that was seconds from succeeding (C-8). The other half of the cause
+is in the unit file: ordering after `NetworkManager.service` means the *service* has started, not
+that it has associated, and association takes five to twenty seconds.
+
+**It is a race, not a certainty**, and the distinction is worth keeping straight: it fires only
+when MatrixOS asks inside that window. On the development device it did not fire — that unit came
+up on its network normally after provisioning, which is how the theory got tested and corrected
+rather than assumed.
+
+**And the one the hardware found on the first real setup attempt — 2026-07-29.** Every join
+failed with `TRY AGAIN` on the panel, and the journal said why:
+
+```
+Error: 802-11-wireless-security.key-mgmt: property is missing.
+```
+
+Not a wrong password. The cause was a **pre-existing connection profile whose name differed from
+the SSID**: the development device had a hand-made profile called `Standort MUC` for the network
+`FRITZ!Box 7682 KV` (device-setup.md §7). `nmcli device wifi connect` finds a profile by SSID and
+reuses it, and in that state it produced a connection with a password and no key-management
+setting. Deleting the profile fixed it immediately and the setup flow completed on the next try.
+
+Two things follow. First, **a shipped unit cannot hit this** — it has no hand-made profiles, and
+the factory reset removes every client profile it ever creates. The development device was an
+unrealistic test bed precisely because it had history. Second, the failure was
+**indistinguishable from a wrong password** on the panel, which is the worst possible way for it
+to fail: the user retypes a correct password and it fails again.
+
+Two changes came out of it anyway, both defensive rather than causal, and it is worth keeping
+that distinction: `NmcliWifi::connect()` now rescans until the network is visible before asking
+to join it — an empty scan cache after leaving access-point mode would produce the same symptom —
+and the failure path no longer deletes a profile that existed before the attempt. The second one
+matters: on a hand-configured device that cleanup would have deleted somebody else's profile.
+
+This is the class of defect the milestone's honesty note predicted. No fake reproduces it,
+because a fake has no notion of a NetworkManager profile store with history in it.
+
+The earlier fix is one line of intent: wait when *either* our own file or NetworkManager knows a network,
+which is what `WifiControl::savedNetwork()` now answers. Three tests cover it, including the one
+that matters most — a network that associates inside the grace period is never interrupted. What
+makes it worth recording is that `--fake-wifi` could not have produced it: the fake modelled a
+device as either unconfigured or already connected, never as *configured but not yet
+associated*, which is the state every real device is in for the first seconds after a boot.
+
+**Partly verified on hardware — 2026-08-20.** On the development Pi the setup flow works end to
+end on a real radio and a real phone: the panel asks for help, the phone's captive-portal WebView
+lands on the setup page without an address being typed, and the join goes through. That is
+criteria 3 and 4. Snake and the Morse trainer run on the panel in the same build, so the encoder
+path carries the apps written since v0.3 as well.
+
+**What that run cannot answer is the other half of the milestone**, and the reason is the device
+itself: the development Pi was configured by hand over weeks, not by `provision.sh` from a blank
+card. It is therefore evidence about the *software* and none at all about the *unit*. Everything
+that distinguishes a shipped device from a maintainer's Pi is still open — provisioning from a
+blank card, two units not colliding, the read-only overlay, the scrubbed image, and pulling the
+plug. Criteria 1, 2, 5, 6, 9, 10, 11 and 12 in
+[requirements.md §5.3](requirements.md#53-v04--appliance) are the list to work through once a
+card and a device are at hand.
+
+The rest remains covered by the suite and by end-to-end runs of the real binary against
+`--fake-wifi`, including the whole portal flow over HTTP.
 
 ---
 
@@ -522,10 +689,175 @@ Wanted but not yet placed in a milestone. Ordering within this list is not meani
 | Breakout / Arkanoid                                                       | Rotate to move the paddle                   | v0.3 game loop; shares Pong's paddle problem                                                                           |
 | Memory                                                                    | Rotate over cards, press to reveal          | v0.3 persistence for best times                                                                                        |
 | 2048                                                                      | Rotate to pick a direction, press to commit | Input mapping design — four directions on one encoder                                                                  |
-| Morse trainer                                                             | Press for dots and dashes                   | Nothing                                                                                                                |
-| Stock ticker                                                              | Rotate to change symbol                     | v0.5 network                                                                                                           |
 | Collatz visualiser, infinite terrain                                      | Rotate to change the seed                   | Nothing                                                                                                                |
 | ASCII art                                                                 | Rotate to browse                            | Font work                                                                                                              |
+| Day/night world map                                                       | Rotate to scrub time, press for now         | A 64x32 coastline mask; nothing else — v0.4 already knows the time                                                     |
+| Live sport scores                                                         | Rotate through fixtures                     | v0.5 network, plus polling on a far shorter period than Weather                                                        |
+| Flag quiz                                                                 | Rotate through answers, press to commit     | The quiz shell below, a curated flag set, v0.3 persistence                                                             |
+| Who's that Pokémon                                                        | Rotate through answers, press to commit     | The quiz shell below, plus sprite data we almost certainly may not ship — see below                                    |
+| Transit departures                                                        | Rotate through departures                   | v0.5 network and per-app configuration                                                                                 |
+| Tennis Leistungsklasse                                                    | Rotate through recent matches               | v0.5 network, per-app configuration, and a data source that may not exist                                              |
+| Stock, ETF and commodity ticker                                           | Rotate to change symbol, press for chart    | v0.5 network and per-app configuration                                                                                 |
+| Instagram followers                                                       | Press to switch count and QR code           | v0.7 OAuth, per-app configuration, a QR generator — and it barely fits, see below                                      |
+
+**Morse trainer — built 2026-07-30, ahead of every milestone.** It jumped the queue precisely
+because it unlocks nothing: one encoder, one font, the v0.3 store, no network and no new
+platform work, so nothing downstream waits on it.
+
+The dot/dash split is not the app's invention — a tap arrives as `Press` on release, a hold
+produces `LongPress` at 600 ms while the button is still down, so the gesture recognizer had
+already drawn the line the operator has to learn.
+
+**Four modes. Three are keyed by the same button and differ only in when the answer is visible
+and what a miss costs** — which is why one flag rather than three sets of screens does the work
+— **and the fourth runs the exercise backwards.**
+
+- **STUDY** walks the alphabet with the code on screen throughout, loops a silent demonstration
+  on the character itself, and advances only once the letter has actually been sent. A wrong
+  symbol costs nothing but another go.
+- **QUIZ** asks from memory like CODE, but a miss hands the answer over and leaves it up until
+  the letter has been keyed — so a blank is never a dead end and the run never ends. No clock,
+  no lives, no score. Its pool widens only on **unaided** recall: finishing a letter after it
+  was given to you is practice, not progress.
+- **GUESS** inverts the exercise: the code is shown and four letters are offered, the encoder
+  moves the cursor and a press commits. Timed, three lives, its own record. Distractors are
+  drawn from letters whose code is the **same length** wherever enough exist, because random
+  ones would let most questions be settled by counting symbols instead of reading them.
+- **CODE** keeps the answer hidden, runs a clock, and charges one of three lives per miss.
+
+The first design had STUDY play letters back on a timer while the operator watched; it was
+replaced the same day because watching is not practising. QUIZ was added straight after, as the
+step between reading the answer and being timed on it, and GUESS after that. The menu labels
+went through one revision: LEARN, READ and GAME became STUDY, GUESS and CODE, because with four
+entries "GAME" no longer said which of the two games it meant.
+
+**GUESS is also the exception to the input problem below**, and worth noticing as a pattern: it
+never touches the key, so `Press` and `LongPress` are free, and the hold can simply mean "back
+to the menu" without any pause menu at all. An app that spends both button gestures needs the
+`Rotate` escape; an app that spends neither does not. Sending and reading also keep separate
+records — `highscore` and `readscore` — because they are two skills and one number would flatter
+whichever was practised last.
+
+**That change exhausted the input vocabulary, which is the part worth recording.** Once both
+modes key, `Press` and `LongPress` are both spoken for, `DoublePress` is not produced at the
+default timing (Q-4), and the shell consumes `Home` before an app sees it (ADR-0009). `Rotate`
+is the only input left, so it carries the way out: turning opens a pause menu — `RESUME` and
+`MENU`, the same two everywhere — with `RESUME` preselected, so a knock against the encoder
+costs one press rather than a run. An earlier draft offered `SKIP` as well; it was dropped once
+it was clear that no mode can actually strand the operator. The pause also stops the game
+clock, which is what makes it safe to reach for. **Any future app that keys, draws or otherwise
+wants both button gestures will hit this same wall**, so the pattern is likely to outlive this
+app; if a second one needs it, it wants an ADR rather than a copy.
+
+**The threshold that makes the keyer possible also made half the table unkeyable.** A dash does
+not exist until the button has been held for the full 600 ms, so `0` — five dashes — costs three
+seconds of pure holding before any thinking, against a game limit that falls to two and a half.
+Not hard: impossible. The game now hands that time straight back, refunding the threshold each
+time a dash lands, so the clock measures recall rather than mechanics. The awkward half is that
+an app cannot see a hold in progress — the recognizer says nothing until it fires — so a bare
+`remaining <= 0` would still cut the operator off mid-dash; the timeout therefore allows one
+dash-length of grace before it is believed. Both are covered by a test that keys `0` at the
+floor limit with realistic hold timings, and that test fails on the previous build.
+
+One piece of chrome worth keeping: an early draft put a row of repeat pips directly under the
+code, and short bright bars beneath dots and dashes are the one thing a Morse trainer must
+never draw. The top bar carries progress instead — through the alphabet in Learn, through the
+pool in Quiz — and the code row doubles as the operator's own progress wherever the answer is
+public: sent symbols white, the symbol due next in the accent, the rest waiting in the dark.
+Where it is not public, the row shows only what has been sent, over a dim rail so an empty row
+does not read as a broken one.
+
+**Centring turned out to be a platform bug, not a Morse one, and it moved to `gfx/font`.**
+`textWidth` reports the advance box — a full five-pixel cell per glyph — but almost no glyph
+lights its last column. Centring on that number leaves text a pixel left of true centre, which
+on a 64-wide panel shows up as **two more pixels of margin on the right than on the left**, in
+every app that centred anything. `centredTextX` and `rightAlignedTextX` now measure the pixels
+the glyphs actually set, skipping blank runs at either end, and Clock, Snake, Settings, Setup and
+Morse all defer to them; where an ink width cannot be halved the spare pixel goes left.
+
+A third round found the layer under that one: the source font **indents its narrow glyphs**.
+`T`, `Y`, `I`, `1` and `0` light columns 1 to 3 of their five-column box rather than 0 to 3, and
+the converter cannot compensate — `tools/bdf_to_header.py` requires a single bounding box for
+every glyph and refuses per-glyph offsets, so the indent is baked into the bitmaps. Inside a
+six-pixel advance it left three pixels of space before such a letter and two after it, which
+reads as the letter leaning right inside its own word. `drawText` now trims each glyph's own
+bearing, so every glyph starts at the left edge of its cell; the advance is untouched, so lines
+stay monospaced and digits stop jittering sideways as they change. What cannot be removed is the
+extra pixel itself — a three-wide glyph in a six-wide advance has to leave three pixels of gap
+somewhere — but it is now consistently *after* the narrow glyph rather than before it.
+
+The same function does a second job in GUESS, where each answer sits in its own ten-pixel cell
+marked by an underline. `centredTextX` takes a width rather than a surface precisely so a cell
+can be centred in like a small panel — needed because `T`, `I`, `1` and `0` light only three of
+their glyph's five columns and a fixed inset pushed them against the right edge of their box. Two tests
+in `test_font.cpp` hold the rule, and they earned their keep immediately by catching a sentinel
+bug in the first refactor of the ink-bounds helper.
+
+#### What the eight apps added on 2026-07-30 actually ask for
+
+The last eight entries were requested together, and they turn out to need four things rather
+than eight. That is the only reason they are worth a note instead of eight separate ones.
+
+**Per-app configuration is the real gap.** Transit needs a stop, the ticker needs symbols,
+Leistungsklasse needs a player, Instagram needs a handle. None of them can ask on the panel:
+entering free text with one encoder is precisely the interaction FR-37 exists to prevent. The
+configuration page from v0.4 is the obvious home, but today it serves a fixed set of fields the
+platform itself owns and nothing lets an app contribute one. Half the new list is blocked on
+this, which makes it the first thing to build of the four — and per NFR-16 it wants an ADR
+first, because there are two defensible shapes: apps declare their settings and the page renders
+them, or the page keeps its own table and apps read keys out of the v0.3 state store. The first
+keeps the knowledge in the app, the second keeps `net/` from having to know what an app is.
+
+**Flags and Pokémon are one app.** Show a picture, offer four answers, rotate to move, press to
+commit, keep a streak in the state store. Only the dataset differs. Building either alone would
+be building it wrong, so whichever is scheduled first carries the shell.
+
+**Compiled-in datasets return, at a size the font never reached.** The world map is the cheapest
+thing on the list: a 64x32 one-bit land mask is 256 bytes, the colour comes from code, and the
+terminator follows from the date and time v0.4 already has. Flags need roughly 12 KB if the
+curated set is stored two bits per pixel with a per-flag palette, which most national flags fit.
+Pokémon silhouettes would be about 19 KB at 32x32 and one bit. All three are far below the 200 KB
+the configuration page already occupies as a string literal (ADR-0014), so the established
+pattern holds: a checked-in generator producing a header, as `tools/bdf_to_header.py` does for
+the font. This contradicts a sentence under **Dropped**, which is corrected there.
+
+**Live scores break the staleness model.** Weather sets the pattern in v0.5 — fetch rarely,
+tolerate age, show it (FR-28). A score is the opposite: a stale score is not old, it is wrong,
+and a device that silently shows 2-1 after the equaliser is worse than one showing nothing. That
+is a different contract, not a shorter interval, and it needs its own answer for what the panel
+shows when the feed is unreachable.
+
+The world map is the only one of the eight that could be built today. It needs no network, no
+configuration and no new platform work, which also means it unlocks no capability — so by this
+roadmap's own ordering rule it belongs here rather than in a milestone, and it is the obvious
+filler whenever a milestone finishes early.
+
+#### Two of the eight have a blocker that is not technical
+
+**Who's that Pokémon almost certainly cannot ship.** The silhouettes, names and designs are
+Nintendo and Game Freak property, and the format is itself a recognisable element of the show.
+Fine on a device that never leaves the flat; not fine on anything sold, given the direction
+recorded in the commercialisation notes. The flag quiz is the same app without the problem —
+national flags are not protected this way — so the shell gets built either way and Pokémon stays
+here as a personal-build-only entry rather than moving to **Dropped**, because nothing about the
+panel rules it out.
+
+**The Instagram QR code only just fits, and only for short handles.** A version-1 QR is 21x21
+modules and needs a four-module quiet zone, so 29x29 pixels — three to spare in the panel's
+32-pixel height, with the follower count alongside it in the remaining 35 columns. The cost is
+capacity: version 1 at error-correction level L holds 25 characters, and only in alphanumeric
+mode, which is uppercase-only. `INSTAGRAM.COM/` spends 14 of those, leaving **11 characters for
+the handle**. Longer handles need version 2 (25x25 plus quiet zone is 33 pixels, one too tall),
+so the fallbacks are a shortener domain, trimming the quiet zone to two modules and accepting
+that some scanners refuse, or scrolling. Worth settling before the app is written, because it
+decides whether the QR code is a feature or a disappointment.
+
+Both remaining data sources need checking before they are scheduled, for the same reason the
+Spotify note in v0.7 does: the NHL feed and the amateur-tennis ratings (DTB / nuLiga) are read
+through interfaces that are either undocumented or scraped, and sports data in particular is
+aggressively licensed. Leistungsklasse has a second problem the others do not — an audience of
+one. As a personal app that is the point; on a shipped device it is a menu entry nobody else can
+use, which is an argument for per-app configuration being able to hide apps entirely.
 
 ### Platform and UI
 
@@ -586,5 +918,9 @@ question does not resurface.
 | Wordle        | Five columns of six rows plus a letter picker is not legible at this size, and selecting from 26 letters by rotation is slow.                                                                                                               |
 
 The panel size is the reason, so this only changes if the hardware does. Both would also have
-been the only apps needing datasets shipped alongside the binary — dropping them removes that
-capability requirement entirely.
+been the only apps needing datasets shipped alongside the binary — **no longer true as of
+2026-07-30**, when the world map, the flag quiz and Pokémon arrived in the backlog wanting one
+each. It changes nothing here: neither app was dropped over its dataset, and the three that want
+one will use the compiled-in generated header the font already established rather than files
+sitting next to the binary. The distinction that mattered — nothing to install, nothing to keep
+in step with the executable — survives.

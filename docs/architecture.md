@@ -1,6 +1,6 @@
 # Architecture
 
-Status: current as of 2026-07-28 (v0.3).
+Status: current as of 2026-07-29 (v0.4).
 
 This describes the structure and the reasoning behind the boundaries. Code sketches are
 illustrative — they show the shape of an interface, not its final signature.
@@ -204,7 +204,9 @@ This is a convention, not a layer. There is no `DataProvider` base class until t
 second provider to justify it (NFR-17).
 
 From v0.3 two apps have such an object: Snake and the settings app hold a `StateSection` from the
-store (§9.3). That is the rule working rather than an exception to it — neither app opens a file,
+store (§9.3). From v0.4 there are two more of the same shape: the clock holds a `TimeProvider`
+(it may not read a clock either — [ADR-0015](adr/0015-time-provider-and-unknown-time.md)) and
+the setup app holds a `const Provisioning&` it only ever reads a snapshot from. That is the rule working rather than an exception to it — neither app opens a file,
 and a test hands them an in-memory store. One thing follows that the app authors must know:
 **saving blocks.** An `fsync` on an SD card can cost more than a frame, so a save belongs on a
 rare, user-visible event — a record beaten, an app switched, the settings left — and never on the
@@ -215,8 +217,10 @@ per-frame path.
 ## 5. The shell loop
 
 ```
-setup:   build display + input backends (composition root)
+setup:   claim port 80                                        # while still root: §9.1
+         build display + input backends (composition root)
          open the state store                                 # after the display: §9.3
+         start the web server, begin provisioning             # §9.1, §9.4
          register apps
          activate the startup app                             # FR-19/FR-25, not the launcher
 
@@ -225,9 +229,11 @@ each frame:
          for event in input.poll():
              if event is Home: toggle app <-> launcher         # FR-16, shell-only
              else: active.onInput(event)
+         show or leave the setup app if provisioning changed   # FR-35, §9.2
          active.update(dt)
          active.render(backBuffer)
          apply brightness if the setting changed               # FR-6
+         apply the time zone if the setting changed            # FR-25
          display.present(backBuffer)
          sleep until the frame budget is used up               # NFR-1
 
@@ -253,11 +259,13 @@ src/
   os/
     app.h                 the App interface
     shell.{h,cpp}         loop, lifecycle, exception boundary
-    registry.{h,cpp}      the list of available apps
     launcher.{h,cpp}      app-selection menu (an App itself)
     log.h                 leveled logging to stdout/stderr
     state.{h,cpp}         atomic state store        (v0.3, see §9.3)
     settings.h            the keys the shell and the settings app share
+    clock.h, clock.cpp    time provider + "time unknown"  (v0.4, ADR-0015)
+    identity.{h,cpp}      this unit's name, from the CPU serial (v0.4, FR-32)
+    provisioning.{h,cpp}  the setup state machine   (v0.4, see §9.4)
   gfx/
     surface.{h,cpp}
     color.h
@@ -271,20 +279,29 @@ src/
     pi/                   LED panel + encoder        (aarch64 build only)
     sim/                  terminal + keyboard        (host build only)
   net/                    platform infrastructure   (from v0.4, see §9)
-    http_server.{h,cpp}   setup portal, config page, OAuth callback, later uploads
-    mdns.{h,cpp}          stable name on the local network
+    http_server.{h,cpp}   HTTP/1.1 on its own thread          (ADR-0012)
+    portal.{h,cpp}        setup page, config API, captive-portal probes
+    web_assets.h          the React page, generated and checked in (ADR-0014)
+    wifi.h                the WifiControl interface + the no-radio implementation
+    nmcli_wifi.{h,cpp}    NetworkManager through nmcli        (ADR-0013)
+    fake_wifi.h           a radio made of variables: tests, and --fake-wifi
   apps/
     plasma/               v0.1 animation app
     pomodoro/             v0.2 focus/break cycle
     snake/                v0.3 game
-    settings/             v0.3 brightness and startup app
+    settings/             v0.3 brightness, startup app, time zone
     testpattern/          panel diagnostics
-    setup/                provisioning UI           (from v0.4)
+    clock/                v0.4 wall clock
+    setup/                v0.4 provisioning UI
 tests/
   ...                     host-only, Catch2
+web/                      the React configuration page  (v0.4, ADR-0014)
+tools/                    generators whose output is checked in
 ```
 
-`main.cpp` moves from the repository root into `src/`. `external/` stays as it is.
+`external/` stays as it is. There is no `mdns` module: `avahi-daemon` is active in the image by
+default and answers for the system hostname, so the whole of FR-36 is a hostname derived from
+the CPU serial. Writing one would have been an abstraction with nothing behind it (NFR-17).
 
 ### 6.1 Build targets
 
@@ -295,7 +312,7 @@ tests/
 | `matrixos_hal_pi`     | LED panel and encoder backends                        | Pi only                               |
 | `MatrixOS`            | `main.cpp` + the backends available for this target   | both                                  |
 | `matrixos_tests`      | `tests/` against `matrixos_core`                      | host only                             |
-| `matrixos_net`        | embedded HTTP server, mDNS (from v0.4)                | host + Pi                             |
+| `matrixos_net`        | HTTP server, portal, WiFi control (from v0.4)         | host + Pi                             |
 | `matrixos_warnings`   | INTERFACE target carrying `-Wall -Wextra -Wpedantic`  | both, our sources only                |
 
 Splitting the backend out of the main library keeps the host build free of a GPLv2 library it
@@ -335,28 +352,58 @@ The first README proposed **View / HAL / OS / Apps**. The mapping:
 ## 9. The appliance layer (from v0.4)
 
 The device is meant to be handed to someone who did not build it
-([ADR-0007](adr/0007-appliance-provisioning.md)). Three things follow for the structure, and
-notably none of them changes the app model.
+([ADR-0007](adr/0007-appliance-provisioning.md)). Four things follow for the structure, and
+notably none of them changes the app model — the setup screen is an app, and the clock is an
+app holding a provider, exactly like Snake holds its store section.
 
 ### 9.1 The HTTP server is platform infrastructure, not an app
 
-It carries the WiFi setup portal, the configuration page, the OAuth callback, and eventually
-uploads. Four consumers, three of which are platform concerns — so it lives in `net/` beside
-`hal/`, owned by the shell, and not inside the app that happens to need it last.
+It carries the WiFi setup portal, the configuration page and, from v0.7, the OAuth callback.
+Platform concerns, all of them — so it lives in `net/` beside `hal/`, owned by `main.cpp`, and
+not inside an app.
 
 This is a correction of the original plan, where the server was a detail of the upload app in
 the final milestone. It is the one structural consequence of aiming at an appliance.
 
+**It is also the project's second thread**, and the only one our own code owns
+([ADR-0012](adr/0012-own-http-server.md)). The reason is FR-27: `accept()` blocks by nature and
+a frame has 16.6 ms. The rule that keeps this safe is narrow enough to state in one line —
+**the two threads meet at exactly one object, `Provisioning`, which is mutex-protected**
+(§9.4). Handlers touch nothing else the render loop touches, and the render loop never touches
+a socket.
+
+Two things follow that are easy to get wrong and are written down where they happen:
+
+- **The port is claimed before the panel exists.** Port 80 needs root, and the matrix library
+  drops privileges to `daemon` while creating the panel — so `claimPort()` is separate from
+  `start()`, exactly as the encoder claims its GPIO lines first.
+- **Assets are served from memory, never from disk.** The root filesystem is read-only, and a
+  server with no filesystem behind it has no path-traversal bugs to have.
+
+### 9.1.1 Two pages, built differently
+
+The setup portal is plain server-rendered HTML with no JavaScript; the configuration page is a
+React app inlined into a single `index.html` and compiled into the binary through a checked-in
+generated header. The reason is not taste: the portal is rendered by the captive-portal
+WebView, which is not a browser, and a page that fails there leaves a device nobody can put
+into service. [ADR-0014](adr/0014-config-page-in-the-binary.md).
+
 ### 9.2 Setup is an app
 
-While the device is unconfigured, the shell activates the setup app. It renders the states
-the user needs to see — setup mode, connecting, connected, failed — using the same `Surface`
-and the same lifecycle as any other app. No mode switch in the loop, no second rendering
-path, and it is snapshot-testable like everything else.
+While the device has something for the user to do, the shell activates the setup app. It
+renders the states the user needs to see — setup mode, connecting, connected, failed — using
+the same `Surface` and the same lifecycle as any other app. No mode switch in the loop, no
+second rendering path, and it is snapshot-testable like everything else.
 
 The advantage this buys is worth naming: comparable headless devices do WiFi onboarding blind
 behind a blinking LED. Having a panel means every failure can be shown where the user is
 already looking.
+
+The shell's rule is one sentence and it acts **only on the transition**: when the device starts
+needing setup, show the app; when it stops, leave the app if it is still the one on screen.
+Anyone who navigated elsewhere in between meant it. And the setup app is never recorded as the
+last active app — FR-19 would otherwise restore it after a reboot and put a connected device
+back on a setup screen.
 
 ### 9.3 One state store, written atomically — built in v0.3
 
@@ -392,3 +439,23 @@ Tokens live here too, and the platform — not the app — acquires and refreshe
 FR-26 already in force: an app receives data, never credentials, and never performs I/O.
 The appliance requirements needed no new rule for this, which is the payoff of having written
 that one down early.
+
+### 9.4 One provisioning object, read by both threads
+
+`os/provisioning` is the state machine — `Waiting → AccessPoint → Connecting → Connected`, with
+`Failed` bringing the access point back — and the only thing that talks to the radio. Three
+properties make it work:
+
+- **Requests return immediately.** A browser is waiting at the other end of the POST, and a
+  join takes tens of seconds. The work runs on a worker thread the object owns.
+- **The panel reads a snapshot**, taken under the lock once per frame. The app never sees a
+  half-updated state and never blocks.
+- **`waitForIdle()` joins the worker**, which is how shutdown is clean and how the tests are
+  deterministic without a single sleep — the same property that made the gesture recognizer
+  testable by taking timestamps as arguments.
+
+`WifiControl` is an interface with two real implementations, like the display and input HALs:
+`NmcliWifi` on the device and `NoWifi` on a machine with no radio we are allowed to touch
+([ADR-0013](adr/0013-wifi-provisioning-via-networkmanager.md)). `FakeWifi` is a third, and it
+earns its place in `net/` rather than in the tests by having two users: the suite, and
+`--fake-wifi`, which puts the entire setup flow into the terminal simulator.

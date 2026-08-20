@@ -18,11 +18,10 @@ namespace matrixos
 class StateStore;
 class StateSection;
 
-/// Panel brightness and which app the device starts with (FR-25) — no time
-/// zone, that stays with the clock until v0.4. Modal, like the Pomodoro:
-/// rotating browses settings, a press edits the one on screen. Never touches
-/// the HAL — brightness is a number written into the store, and the shell
-/// applies it.
+/// Panel brightness, which app the device starts with, and the time zone
+/// (FR-25). Modal, like the Pomodoro: rotating browses settings, a press edits
+/// the one on screen. Never touches the HAL or a clock — each setting is a value
+/// written into the store, and the shell applies what it sees there.
 class SettingsApp : public App
 {
 public:
@@ -30,7 +29,10 @@ public:
     {
         Brightness,
         Startup,
+        TimeZone,
     };
+
+    static constexpr std::size_t kPageCount = 3;
 
     /// `apps` are the startup choices; this app is deliberately not among them.
     SettingsApp(StateStore &store, std::vector<std::string_view> apps);
@@ -48,6 +50,7 @@ public:
     int brightness() const { return brightness_; }
 
     std::string_view startup() const;
+    std::string_view timeZone() const;
 
 private:
     void changeValue(int detents);
@@ -58,6 +61,7 @@ private:
     /// Index 0 is "Last app"; index i+1 is apps_[i].
     std::vector<std::string_view> apps_;
     std::size_t startup_index_ = 0;
+    std::size_t zone_index_ = 0;
 
     Page page_ = Page::Brightness;
     bool editing_ = false;

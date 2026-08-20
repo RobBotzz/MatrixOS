@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(MatrixOS VERSION 0.1.0 LANGUAGES C CXX)
+project(MatrixOS VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +27,34 @@ message(STATUS "MatrixOS: LED panel backend .. ${MATRIXOS_TARGET_PI}")
 message(STATUS "MatrixOS: test suite ......... ${MATRIXOS_BUILD_TESTS}")
 
 find_package(Threads REQUIRED)
+
+# =============================================================================
+# Version, for the configuration page (FR-41)
+# =============================================================================
+# The commit is read at configure time, not at build time: a build-time hook
+# would rerun on every compile for a string that changes once a day.
+
+set(MATRIXOS_VERSION ${PROJECT_VERSION})
+set(MATRIXOS_COMMIT "unknown")
+
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE MATRIXOS_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/os/version.h.in
+    ${CMAKE_BINARY_DIR}/generated/os/version.h
+    @ONLY
+)
+
+message(STATUS "MatrixOS: version ............ ${MATRIXOS_VERSION} (${MATRIXOS_COMMIT})")
 
 # Warnings for our own code only — external/ is vendored and stays as it is.
 add_library(matrixos_warnings INTERFACE)
@@ -83,13 +111,22 @@ add_library(matrixos_core STATIC
     src/os/shell.cpp
     src/os/launcher.cpp
     src/os/state.cpp
+    src/os/provisioning.cpp
+    src/os/identity.cpp
+    src/os/clock.cpp
+    src/apps/clock/clock_app.cpp
+    src/apps/morse/morse.cpp
     src/apps/plasma/plasma.cpp
     src/apps/pomodoro/pomodoro.cpp
     src/apps/settings/settings_app.cpp
+    src/apps/setup/setup_app.cpp
     src/apps/snake/snake.cpp
     src/apps/testpattern/test_pattern.cpp
 )
-target_include_directories(matrixos_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(matrixos_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/generated
+)
 target_link_libraries(matrixos_core
     PUBLIC Threads::Threads   # the shell sleeps between frames
     PRIVATE matrixos_warnings
@@ -123,6 +160,29 @@ if(MATRIXOS_TARGET_PI)
 endif()
 
 # =============================================================================
+# Platform networking (from v0.4)
+# =============================================================================
+# The setup portal, the configuration page and, from v0.7, the OAuth callback.
+# Platform infrastructure rather than a detail of one app (ADR-0007 §9.1), and
+# built for host and Pi alike so it can be tested without the device.
+
+add_library(matrixos_net STATIC
+    src/net/http_server.cpp
+    src/net/nmcli_wifi.cpp
+    src/net/portal.cpp
+)
+target_link_libraries(matrixos_net
+    PUBLIC matrixos_core
+    PRIVATE matrixos_warnings
+)
+
+# The configuration page is one 200 KB string literal in a generated header
+# (ADR-0014). -Wpedantic would otherwise complain that it exceeds the length ISO
+# C++ requires an implementation to support; the alternative encoding is a byte
+# array six times the size and unreadable in a diff.
+target_compile_options(matrixos_net PRIVATE -Wno-overlength-strings)
+
+# =============================================================================
 # Executable
 # =============================================================================
 
@@ -130,6 +190,7 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     matrixos_core
     matrixos_hal_sim
+    matrixos_net
     matrixos_warnings
     Threads::Threads
 )
@@ -165,10 +226,18 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_plasma.cpp
         tests/test_pomodoro.cpp
         tests/test_snake.cpp
+        tests/test_morse.cpp
         tests/test_settings.cpp
+        tests/test_http_server.cpp
+        tests/test_provisioning.cpp
+        tests/test_portal.cpp
+        tests/test_identity.cpp
+        tests/test_clock.cpp
+        tests/test_setup_app.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core
+        matrixos_net
         matrixos_warnings
         Catch2::Catch2WithMain
     )
