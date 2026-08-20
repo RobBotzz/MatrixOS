@@ -11,14 +11,15 @@ The longer-term goal is an **appliance**: a small number of finished units that 
 without technical knowledge can set up themselves — plug it in, join a WiFi network from
 their phone, done. See [ADR-0007](docs/adr/0007-appliance-provisioning.md).
 
-**Status:** **v0.4 built; the setup flow runs on hardware, the provisioning does not yet.** With v0.3 the device remembered
-things; with v0.4 it can be handed to someone else. A unit that knows no network opens its own
-WiFi access point, shows the name to join on the panel, and serves a setup page that any phone
-lands on without typing an address. Once online it answers to `matrixos-xxxx.local` with a
-configuration page — version, network, factory reset — and shows a clock that says
-`NO TIME` until it has actually been told the time rather than displaying a plausible lie.
-One script turns a blank card into a device; another takes the image. The same source still
-runs in a terminal simulator, now including the whole setup flow via `--fake-wifi`.
+**Status:** **v0.4 built; the setup flow runs on hardware, the provisioning does not yet.**
+With v0.3 the device remembered things; with v0.4 it can be handed to someone else. A unit that
+knows no network opens its own WiFi access point, shows the name to join on the panel, and
+serves a setup page that any phone lands on without typing an address. Once online it answers
+to `matrixos-xxxx.local` with a configuration page — version, network, factory reset — and
+shows a clock that says `NO TIME` until it has actually been told the time rather than
+displaying a plausible lie. One script turns a blank card into a device; another takes the
+image. The same source still runs in a terminal simulator, now including the whole setup flow
+via `--fake-wifi`.
 
 The access point, the captive portal and the join have since run on a real radio and a real
 phone. What is left is everything that separates a shipped unit from the maintainer's Pi, which
@@ -28,13 +29,18 @@ that do not collide, a read-only root and ten pulled plugs. The list is
 
 ## Apps
 
+In launcher order:
+
 | App | What it does |
 | --- | --- |
+| Clock | Three faces; rotate to switch. Says `NO TIME` until the device has actually been told the time. |
+| Morse | Morse trainer in four modes — tap a dot, hold a dash, or read the code and pick the letter. Separate records for sending and reading. |
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
 | Snake | Rotate to turn, press to start; keeps a persistent high score. |
-| Settings | Brightness and which app the device starts with. |
-| Test Pattern | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |
+| Test Card | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |
+| Setup | Joining a WiFi network. The shell brings it up by itself whenever the device needs the user, so it is rarely opened by hand. |
+| Settings | Brightness, time zone, and which app the device starts with. |
 
 ## Documentation
 
