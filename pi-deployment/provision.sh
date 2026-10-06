@@ -88,6 +88,7 @@ step "1. Packages"
 # build. Deliberately short: an appliance installs nothing it does not use.
 
 PACKAGES=(network-manager avahi-daemon jq unzip curl)
+[ "$WANT_READONLY" -eq 1 ] && PACKAGES+=(overlayroot)
 MISSING=()
 for package in "${PACKAGES[@]}"; do
   dpkg -s "$package" >/dev/null 2>&1 || MISSING+=("$package")
@@ -97,8 +98,10 @@ if [ ${#MISSING[@]} -eq 0 ]; then
   skip "${PACKAGES[*]}"
 else
   note "installing: ${MISSING[*]}"
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${MISSING[@]}"
+  # A fresh image runs its own apt jobs during the first minutes; wait for them.
+  APT_WAIT=(-o DPkg::Lock::Timeout=600)
+  apt-get "${APT_WAIT[@]}" update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get "${APT_WAIT[@]}" install -y -qq "${MISSING[@]}"
 fi
 
 # =============================================================================
@@ -358,6 +361,31 @@ if [ -f /etc/dphys-swapfile ] || systemctl is-enabled dphys-swapfile >/dev/null 
   dphys-swapfile uninstall 2>/dev/null || true
   systemctl disable dphys-swapfile >/dev/null 2>&1 || true
   rm -f /var/swap
+elif [ -f /etc/rpi/swap.conf ]; then
+  # Trixie replaced dphys-swapfile with rpi-swap: zram plus periodic writeback
+  # into /var/swap on the card.
+  RPI_SWAP_DROPIN=/etc/rpi/swap.conf.d/90-matrixos.conf
+  if [ -f "$RPI_SWAP_DROPIN" ]; then
+    skip "rpi-swap disabled"
+  else
+    note "disabling rpi-swap — the single largest write source on the card"
+    install -d -m 0755 /etc/rpi/swap.conf.d
+    cat >"$RPI_SWAP_DROPIN" <<'EOF'
+# Written by provision.sh (ADR-0008, NFR-20).
+[Main]
+Mechanism=none
+EOF
+    NEEDS_REBOOT=1
+  fi
+
+  if [ -e /var/swap ]; then
+    note "removing /var/swap"
+    swapoff -a || true
+    for loop in $(losetup -j /var/swap -O NAME --noheadings); do
+      losetup -d "$loop" || true
+    done
+    rm -f /var/swap
+  fi
 else
   skip "swap is off"
 fi
@@ -378,16 +406,28 @@ if [ "$WANT_READONLY" -eq 0 ]; then
   warn "skipped on request (--no-readonly): pulling the plug can corrupt the card"
 elif [ "$HAVE_STATE_PARTITION" -eq 0 ]; then
   warn "skipped: without the state partition the device would forget everything"
-elif grep -q 'boot=overlay' /boot/firmware/cmdline.txt; then
+elif grep -q 'overlayroot=tmpfs:recurse=0' /boot/firmware/cmdline.txt && dpkg -s overlayroot >/dev/null 2>&1; then
   skip "overlay filesystem is enabled"
 else
   note "enabling the overlay filesystem and a read-only boot partition"
   raspi-config nonint enable_overlayfs || die "raspi-config could not enable the overlay"
   raspi-config nonint enable_bootro || warn "boot partition left writable (no enable_bootro in this raspi-config)"
+
+  # recurse=0: by default overlayroot also puts every other ext4 mount in fstab
+  # under a RAM overlay — including the state partition, which would then
+  # forget everything on reboot.
+  mount -o remount,rw /boot/firmware
+  sed -i 's/overlayroot=tmpfs /overlayroot=tmpfs:recurse=0 /' /boot/firmware/cmdline.txt
+
+  # raspi-config returns 0 even when its own apt-get failed, which leaves the
+  # kernel parameter without the package that acts on it.
+  grep -q 'overlayroot=tmpfs:recurse=0' /boot/firmware/cmdline.txt && dpkg -s overlayroot >/dev/null 2>&1 ||
+    die "the overlay is not set up — check /boot/firmware/cmdline.txt and the overlayroot package"
   NEEDS_REBOOT=1
-  warn "from now on the root filesystem is read-only:"
-  warn "  deploying a build needs 'sudo raspi-config nonint disable_overlayfs' and a reboot"
-  warn "  (that collision is named in ADR-0005 and ADR-0008)"
+  warn "from now on the root filesystem is read-only. To make it writable again:"
+  warn "  sudo mount -o remount,rw /boot/firmware"
+  warn "  sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reboot"
+  warn "raspi-config's disable_overlayfs does not recognise the recurse=0 parameter."
 fi
 
 # =============================================================================

@@ -92,9 +92,10 @@ fi
 echo "🔍 Checking the root filesystem..."
 e2fsck -fy "$ROOT_PART"
 
-# Shrink the filesystem to its used size plus headroom, then the partition to
-# match, then create the state partition in what is left. The order matters:
-# a partition smaller than its filesystem is a destroyed filesystem.
+# Shrink the filesystem to its minimum, move the partition end to minimum plus
+# headroom, then grow the filesystem to fill it. The target can be larger than
+# a freshly flashed root partition, so the partition has to move before the
+# filesystem may grow — and it is never smaller than the filesystem inside it.
 echo "📏 Shrinking the root filesystem..."
 resize2fs -M "$ROOT_PART"
 
@@ -104,13 +105,17 @@ USED_MB=$(( BLOCKS * BLOCK_SIZE / 1024 / 1024 ))
 
 # Headroom for the packages provision.sh installs and for a future build.
 ROOT_MB=$(( USED_MB + 1024 ))
-resize2fs "$ROOT_PART" "${ROOT_MB}M"
 
 ROOT_START_S=$(parted -ms "$DISK" unit s print | awk -F: '/^2:/ {print $2}' | tr -d 's')
 ROOT_END_S=$(( ROOT_START_S + ROOT_MB * 1024 * 1024 / 512 ))
 
 echo "📐 Resizing the root partition..."
 parted -s "$DISK" unit s resizepart 2 "${ROOT_END_S}s"
+partprobe "$DISK"
+sleep 1
+
+echo "📏 Growing the root filesystem into it..."
+resize2fs "$ROOT_PART"
 
 STATE_START_S=$(( ROOT_END_S + 2048 ))
 STATE_END_S=$(( STATE_START_S + STATE_SIZE_MB * 1024 * 1024 / 512 ))
@@ -123,14 +128,19 @@ sleep 1
 mkfs.ext4 -q -L "$STATE_LABEL" "$STATE_PART"
 
 # The root filesystem must not be expanded again on first boot, or it would eat
-# the partition we just created. Raspberry Pi OS does that from cmdline.txt.
+# the partition we just created. Raspberry Pi OS does that from cmdline.txt:
+# Bookworm through a firstboot init, Trixie through a bare `resize` token.
 BOOT_MOUNT=$(mktemp -d)
 if [[ "$DISK" =~ [0-9]$ ]]; then BOOT_PART="${DISK}p1"; else BOOT_PART="${DISK}1"; fi
 
 mount "$BOOT_PART" "$BOOT_MOUNT"
 if grep -q 'init=/usr/lib/raspberrypi-sys-mods/firstboot' "$BOOT_MOUNT/cmdline.txt" 2>/dev/null; then
-  echo "🚫 Disabling the first-boot root expansion..."
+  echo "🚫 Disabling the first-boot root expansion (firstboot)..."
   sed -i 's| init=/usr/lib/raspberrypi-sys-mods/firstboot||' "$BOOT_MOUNT/cmdline.txt"
+fi
+if grep -qE '(^| )resize( |$)' "$BOOT_MOUNT/cmdline.txt" 2>/dev/null; then
+  echo "🚫 Disabling the first-boot root expansion (resize)..."
+  sed -i -E 's/ resize( |$)/\1/' "$BOOT_MOUNT/cmdline.txt"
 fi
 umount "$BOOT_MOUNT"
 rmdir "$BOOT_MOUNT"

@@ -49,13 +49,24 @@ sudo pi-deployment/provision.sh
 That is the entire device configuration (NFR-21). If something about a shipped unit is not in
 that script, it is not on the unit.
 
-Finally, put a build in place. The overlay filesystem is enabled by now, so the root is
-read-only:
+Finally, put a build in place — **before the reboot** `provision.sh` asks for, while the root is
+still writable:
 
 ```bash
-sudo raspi-config nonint disable_overlayfs && sudo reboot
 sudo MATRIXOS_DEST=/opt/matrixos ~/MatrixOS/pi-deployment/deploy.sh
-sudo raspi-config nonint enable_overlayfs && sudo reboot
+sudo reboot
+```
+
+On a device that is already read-only, the overlay has to come off first and go back on
+afterwards. `raspi-config nonint disable_overlayfs` does **not** work for this: `provision.sh`
+sets `overlayroot=tmpfs:recurse=0` (see ADR-0008), which raspi-config does not recognise.
+
+```bash
+# off
+sudo mount -o remount,rw /boot/firmware
+sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reboot
+# on again — provision.sh is idempotent and only redoes step 8
+sudo ~/MatrixOS/pi-deployment/provision.sh && sudo reboot
 ```
 
 Confirm the panel comes up, the setup screen appears, and a phone can complete the flow.
@@ -68,7 +79,8 @@ Everything below is a thing that must not be cloned into somebody's living room.
 device, with the overlay **disabled** so the deletions actually reach the card.
 
 ```bash
-sudo raspi-config nonint disable_overlayfs && sudo reboot
+sudo mount -o remount,rw /boot/firmware
+sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reboot
 ```
 
 ```bash
@@ -77,6 +89,13 @@ sudo raspi-config nonint disable_overlayfs && sudo reboot
 sudo nmcli -t -f NAME,TYPE connection show \
   | awk -F: '$2 == "802-11-wireless" && $1 != "matrixos-setup" {print $1}' \
   | xargs -r -n1 sudo nmcli connection delete
+
+# Profiles made by hand or by Raspberry Pi Imager live in netplan, not in
+# NetworkManager's own store, and carry their passwords in cleartext.
+sudo rm -f /etc/netplan/*.yaml
+
+# The deploy token. It would otherwise ship in every unit.
+rm -f ~/MatrixOS/pi-deployment/.env
 
 # Device state: high scores, settings, the last active app, the remembered network.
 sudo rm -f /var/lib/matrixos/*.conf
@@ -94,17 +113,23 @@ sudo rm -rf /var/log/*.gz /var/log/*.1 /var/tmp/*
 sudo truncate -s 0 /etc/machine-id
 ```
 
+> **Open, found 2026-10-06:** Raspberry Pi Imager on Trixie writes `user-data` and
+> `network-config` onto the boot partition for cloud-init — the maintainer's account and the WiFi
+> password in cleartext. They are not scrubbed yet. Deleting them is easy; what cloud-init does
+> on a clone without them, and who regenerates the SSH host keys deleted above, has to be checked
+> on a device before this section is final.
+
 Check what is left before going further:
 
 ```bash
-sudo nmcli -t -f NAME,TYPE connection show
-ls -la /var/lib/matrixos /etc/ssh
+sudo nmcli -f NAME,FILENAME connection show   # only matrixos-setup and lo
+ls -la /var/lib/matrixos /etc/ssh /etc/netplan ~/MatrixOS/pi-deployment
 ```
 
 Then re-enable the overlay and shut down:
 
 ```bash
-sudo raspi-config nonint enable_overlayfs
+sudo ~/MatrixOS/pi-deployment/provision.sh
 sudo shutdown -h now
 ```
 

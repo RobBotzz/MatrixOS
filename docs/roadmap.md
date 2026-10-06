@@ -1,7 +1,7 @@
 # Roadmap
 
-Status: v0.1 to v0.3 complete; v0.4 built, its setup flow verified on the development Pi, its
-provisioning not yet tested. Last revised 2026-08-20.
+Status: v0.1 to v0.3 complete; v0.4 built, provisioned from a blank card on 2026-10-06, its
+setup-flow, durability and image criteria still open. Last revised 2026-10-06.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -426,9 +426,10 @@ want to test.
 
 ## v0.4 — Appliance 🔨
 
-**Built 2026-07-29, not yet verified on a device.** The code, the provisioning scripts and the
+**Built 2026-07-29, partly verified on a device.** The code, the provisioning scripts and the
 image procedure are in place; the acceptance criteria that need a radio, a phone and a power
-cut are open. See _Delivered_ below.
+cut are open. See _Delivered_ below, and _Provisioned from a blank card_ for the current state
+and the next steps.
 
 **Unlocks:** the project stops being a program on the maintainer's Pi and becomes a device
 someone else can switch on. Decided in
@@ -622,6 +623,78 @@ card and a device are at hand.
 
 The rest remains covered by the suite and by end-to-end runs of the real binary against
 `--fake-wifi`, including the whole portal flow over HTTP.
+
+### Provisioned from a blank card — 2026-10-06
+
+The development Pi's card was reflashed — Raspberry Pi OS Lite 64-bit, Trixie, through
+Raspberry Pi Imager — and taken through `prepare-card.sh` and `provision.sh` without
+`--no-readonly` or `--keep-hostname`, exactly as a shipped unit would be. It ended up as
+`matrixos-f74b`: read-only root, read-only boot partition, no swap, a writable state partition,
+MatrixOS 0.4.0 running and joined to the network.
+
+**It took five fixes to get there, and every one of them was invisible on the hand-configured
+device.** That is the whole argument of the August note above, now with numbers.
+
+| # | Found | Symptom it would have caused | Fix |
+| - | ----- | ---------------------------- | --- |
+| 1 | `prepare-card.sh` grew the root filesystem before the partition | Aborts on every fresh card: the Imager's root filesystem is already minimal, and minimum + 1 GB is larger than its partition | Partition first, then `resize2fs` to fill it |
+| 2 | Trixie expands the root through a bare `resize` in `cmdline.txt`, not the Bookworm `firstboot` init | First boot may expand root over the state partition | `prepare-card.sh` strips both |
+| 3 | `raspi-config enable_overlayfs` returns 0 when its own `apt-get` fails — here on the lock held by the image's first-boot apt job | `overlayroot=tmpfs` on the command line without the package: a writable root that looks read-only | `provision.sh` installs `overlayroot` itself, waits for the dpkg lock, and verifies afterwards |
+| 4 | overlayroot's default `recurse=1` puts every ext4 mount in fstab under a RAM overlay | **The state partition forgets everything on reboot**, WiFi credentials included — logged as "not writable by uid 1" | `overlayroot=tmpfs:recurse=0`; raspi-config's `disable_overlayfs` no longer recognises it, so the docs carry their own off-switch |
+| 5 | Trixie replaced `dphys-swapfile` with `rpi-swap`: zram plus periodic writeback into `/var/swap` | `provision.sh` reported "swap is off" while swap wrote to the card (NFR-20); under the overlay the swap file would have sat in RAM | Drop-in `Mechanism=none`, `/var/swap` removed |
+
+Two more that are not about Trixie:
+
+- **`StartLimitIntervalSec=0` was in `[Service]`**, where systemd ignores it with a warning. The
+  "never stop restarting" promise of C-10 has never been in effect: a crash loop would have
+  stopped after five starts. Moved to `[Unit]`. **Not yet on the device** — it needs the next
+  deploy cycle.
+- **The image scrub missed three things**: netplan profiles (where both hand-made and Imager
+  WiFi profiles live, with cleartext passwords), the deploy token in `pi-deployment/.env`, and
+  the cloud-init `user-data` / `network-config` the Imager writes onto the boot partition. The
+  first two are now in [image-build.md](image-build.md); the third is marked open there.
+
+One worry checked and dismissed: profiles MatrixOS creates through the portal land in
+`/etc/NetworkManager/system-connections`, which `provision.sh` does move onto the state
+partition — confirmed with `nmcli -f NAME,FILENAME`.
+
+**Criteria after this session** ([requirements.md §5.3](requirements.md#53-v04--appliance)):
+
+| # | State | Evidence or what is missing |
+| - | ----- | --------------------------- |
+| 1 | 🟡 | Works, but only with the fixes above applied mid-run. Needs one clean pass of the corrected scripts on a fresh card. |
+| 2 | ⏳ | Needs a second Pi. The serial-derived name and AP name are confirmed on this one. |
+| 3, 4, 5 | ⏳ | Next session, via factory reset (see below). |
+| 6 | ✅ | `matrixos-f74b.local` serves the configuration page showing `0.4.0` / `955910e`. |
+| 7 | ⏳ | Sync observed in the log (`clock: time synchronised` 27 s after start); `--:--` before it and the zone change not yet watched on the panel. |
+| 8 | ⏳ | Next session. |
+| 9 | ⏳ | Ten power cuts, some during a Snake record. |
+| 10 | 🟡 | Root overlay, boot `ro`, no swap, state `rw` all confirmed. The volatile journal and an actual zero-write measurement are not yet checked. |
+| 11 | ⏳ | Image build; three scrub questions open. |
+| 12 | ✅ | Plasma stays smooth while the page is reloaded rapidly. A visual check — there is no FPS counter readable from outside. |
+| 13 | ✅ | Since August. |
+
+#### Next session, in order
+
+1. **Put the corrected unit file on the device**: overlay off, copy `matrixos.service` and rerun
+   `provision.sh`, reboot; the journal must no longer warn about `StartLimitIntervalSec`.
+2. **Criterion 7**: watch the panel during boot for `--:--`, then change the zone in Settings.
+3. **Criteria 8, 3, 5, 4**, in that order and without a terminal: factory reset from the
+   configuration page → the panel asks to join `MatrixOS-f74b` → join with a wrong password
+   (panel says so, AP returns) → join with the right one → reboot and confirm the network is
+   remembered, which is what fix 4 is for. On this unit the Imager's netplan profile is deleted
+   only in the RAM overlay and returns on reboot; a scrubbed unit has none. If it gets in the
+   way, delete it once with the overlay off.
+4. **Criterion 10**: `journalctl --header` shows a runtime journal only; the write counter in
+   `/sys/block/mmcblk0/stat` stays flat over an hour of normal use.
+5. **Criterion 9**: ten power cuts.
+6. **Criteria 1 and 11 together**: flash the card fresh and run the corrected scripts in one
+   pass — that is criterion 1 — then use that unit as the image build device. Before scrubbing,
+   settle the three open questions: what to do with cloud-init's `user-data` and
+   `network-config`, who regenerates SSH host keys on Trixie once they are deleted, and whether
+   the maintainer account belongs in a shipped image at all. Windows also left a `System Volume
+   Information` folder on the boot partition, which should not ship either.
+7. **Criterion 2** whenever a second Pi is at hand.
 
 ---
 

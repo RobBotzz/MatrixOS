@@ -296,6 +296,9 @@ Two of them cannot be checked on a development machine at all (9 and 10 need a r
 real power cut), and that is deliberate — an appliance criterion that a simulator can satisfy
 is not testing the thing the milestone is about.
 
+**Status, 2026-10-06: 6 and 12 met on a unit provisioned from a blank card; 1 and 10 largely
+met, with a clean rerun of the corrected scripts outstanding — see the roadmap's v0.4 section.**
+
 **Status, 2026-08-20: 3 and 4 met on the development Pi, 13 met in CI.** The remaining criteria
 are open, and one property of that Pi is why: it was configured by hand rather than by
 `provision.sh`, so it can demonstrate the software and says nothing about a unit built from the

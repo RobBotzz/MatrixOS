@@ -258,8 +258,19 @@ That directory stays `root:root 0700`; only MatrixOS's own `*.conf` files belong
 ## 7. Network
 
 Two WiFi profiles for two locations. Raspberry Pi OS Trixie configures the network through
-**netplan** with NetworkManager as the renderer, so `nmcli` writes into
-`/etc/netplan/90-NM-<uuid>.yaml` rather than into a separate NetworkManager store.
+**netplan** with NetworkManager as the renderer, and profiles end up in **two different
+stores** depending on how they were made — checked on the development device on 2026-10-06
+with `nmcli -f NAME,FILENAME connection show`:
+
+| Made by | Stored in |
+| --- | --- |
+| `nmcli connection add` by hand (below) | `/etc/netplan/90-NM-<uuid>.yaml` |
+| Raspberry Pi Imager (cloud-init) | `/etc/netplan/*.yaml`, as `netplan-wlan0-<SSID>` |
+| MatrixOS through the setup portal | `/etc/NetworkManager/system-connections/*.nmconnection` |
+
+The second is the one that matters for a shipped unit, and it is the directory `provision.sh`
+moves onto the state partition, so a network joined through the portal survives a reboot on a
+read-only root. The first is why the image scrub has to clear `/etc/netplan` as well.
 
 ```bash
 read -rsp 'WLAN password: ' PSK; echo
@@ -324,15 +335,17 @@ name resolves to us first.
 
 ## 8. Status of this device
 
-Sections 1 to 7 are in place and verified. From v0.4 the whole list is `provision.sh`, and the
-development device is a device like any other — except that it is deliberately run with
-`--no-readonly`, so the card stays writable for development.
+**Since 2026-10-06 the development device is a shipped-unit configuration.** Its card was
+reflashed and provisioned from blank with `prepare-card.sh` and `provision.sh` — no
+`--no-readonly`, no `--keep-hostname` — to verify v0.4 on real hardware. It is now
+`matrixos-f74b`, the root is read-only, and the Imager's WiFi profile
+(`netplan-wlan0-FRITZ!Box 7580 FI`) is still on it. To develop on it, take the overlay off
+(see [image-build.md §1](image-build.md#1-build-the-device)).
 
-What that costs, and it is worth stating plainly: on a device without the read-only root,
-pulling the power can still corrupt the card. The protections are on shipped units, where they
-belong.
+Before that it ran with `--no-readonly`, and what that costs is worth stating plainly: on a
+device without the read-only root, pulling the power can still corrupt the card.
 
-Rebuilding this device from a blank card:
+Rebuilding it as a development device from a blank card:
 
 ```bash
 # development machine, card in a reader, before the first boot

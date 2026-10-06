@@ -226,10 +226,14 @@ first — a collision named in [ADR-0008](docs/adr/0008-power-loss-resilience.md
 the price of an appliance:
 
 ```bash
-sudo raspi-config nonint disable_overlayfs && sudo reboot
+sudo mount -o remount,rw /boot/firmware
+sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reboot
 sudo MATRIXOS_DEST=/opt/matrixos ~/MatrixOS/pi-deployment/deploy.sh
-sudo raspi-config nonint enable_overlayfs && sudo reboot
+sudo ~/MatrixOS/pi-deployment/provision.sh && sudo reboot
 ```
+
+`raspi-config nonint disable_overlayfs` does not work here — it does not recognise the
+`overlayroot=tmpfs:recurse=0` parameter that keeps the state partition writable.
 
 ## Provisioning a device
 

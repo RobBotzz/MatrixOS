@@ -21,6 +21,12 @@ Documentation=https://github.com/RobBotzz/MatrixOS
 After=NetworkManager.service
 Wants=NetworkManager.service
 
+# Never stop trying. The default would give up after 5 restarts in 10 s, and a
+# device standing in someone's living room has no one to run systemctl on it
+# (C-10). A crash loop is visible on the panel and in the journal. This key
+# belongs in [Unit]; under [Service] systemd ignores it with only a warning.
+StartLimitIntervalSec=0
+
 [Service]
 Type=simple
 
@@ -33,11 +39,6 @@ ExecStart=/home/robin/MatrixOS/build/MatrixOS
 
 Restart=always
 RestartSec=2
-
-# Never stop trying. The default would give up after 5 restarts in 10 s, and a
-# device standing in someone's living room has no one to run systemctl on it
-# (C-10). A crash loop is visible on the panel and in the journal.
-StartLimitIntervalSec=0
 
 # Our loop checks the signal flag every 50 ms, so stopping is quick.
 TimeoutStopSec=10

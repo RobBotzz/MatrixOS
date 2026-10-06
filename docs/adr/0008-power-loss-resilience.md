@@ -39,7 +39,14 @@ which is what makes a remote "it doesn't work" report diagnosable. Both settings
 kind to the card.
 
 **5. No swap** (`dphys-swapfile` disabled and the file removed) and `noatime` on mounts.
-A swap file on the card is a larger wear source than logs.
+A swap file on the card is a larger wear source than logs. Trixie replaced `dphys-swapfile`
+with `rpi-swap`, whose default is zram plus periodic writeback into `/var/swap` on the card;
+`provision.sh` sets `Mechanism=none` there (found on the device, 2026-10-06).
+
+The overlay is `overlayroot`, enabled through raspi-config, with `recurse=0` added to the
+kernel parameter. Without it overlayroot puts **every** ext4 mount in fstab under a RAM overlay,
+the state partition included — a device that looks healthy and forgets everything on reboot
+(found on the device, 2026-10-06).
 
 Deliberately **not** adopted: the hardware watchdog. If the system hangs, pulling the power
 is an acceptable recovery for this class of device and this audience. The systemd
