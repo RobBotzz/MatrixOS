@@ -438,7 +438,7 @@ someone else can switch on. Decided in
 
 - `provision.sh` — one script that turns a fresh Raspberry Pi OS install into a MatrixOS
   device. No manual configuration step outside the script.
-- Golden image via `dd` + PiShrink, including the pre-clone scrub: no maintainer WiFi
+- Golden image via `dd` (PiShrink dropped, see the ADR-0007 addendum), including the pre-clone scrub: no maintainer WiFi
   profile, no shared SSH host keys, no history, no logs, no state. pi-gen stays deferred.
 - First boot: expand the filesystem, derive hostname and setup-AP name from the CPU serial.
 - WiFi provisioning: access point plus captive portal, switch to client mode, return to the

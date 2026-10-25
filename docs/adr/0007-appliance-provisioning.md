@@ -113,3 +113,13 @@ or needing to prove what is on a shipped unit.
   becomes unnecessary.
 - **A maintainer-hosted cloud service for callbacks and pairing** — rejected: a static page
   achieves the same for this flow with nothing to run, monitor, or pay for.
+
+## Addendum, 2026-10-25 — no PiShrink
+
+The image is taken with a `dd` bounded to the end of the last partition and compressed with
+`xz`, not with PiShrink. PiShrink shrinks the *last* partition and adds a first-boot expansion
+hook; since [ADR-0008](0008-power-loss-resilience.md) added the state partition after the root,
+that is `matrixos-state`, which it would have shrunk to its contents. The layout from
+`prepare-card.sh` is compact already, so the bounded copy produces the small artifact PiShrink
+was chosen for. The decision above — a golden image of a provisioned card — is unchanged; the
+procedure is in [image-build.md](../image-build.md).
