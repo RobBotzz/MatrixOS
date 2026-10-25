@@ -333,7 +333,36 @@ name resolves to us first.
 > before it changes anything. Without the rule every scan comes back empty and every join
 > fails, on a device whose panel, logs and web page all look perfectly healthy.
 
-## 8. Status of this device
+## 8. Access — from v0.4
+
+Decided in [ADR-0016](adr/0016-maintainer-access-to-shipped-units.md): SSH with a key, for the
+maintainer account only, and nothing else. `provision.sh` refuses to start until a key is in
+place, so the first thing on a fresh card is, from the development machine:
+
+```bash
+ssh-copy-id admin@<hostname>.local
+```
+
+What the script then sets up:
+
+| | |
+| --- | --- |
+| cloud-init | disabled (`/etc/cloud/cloud-init.disabled`), its seed removed from `/boot/firmware` |
+| sshd | `/etc/ssh/sshd_config.d/10-matrixos.conf`: keys only, `AllowUsers admin`, no root |
+| Host key | `/var/lib/matrixos/ssh/ssh_host_ed25519_key`, generated once by `matrixos-ssh-hostkey.service` |
+| Password | none — the hash is replaced by `*` |
+| sudo | without a password, `/etc/sudoers.d/010-matrixos-maintainer` |
+
+The host key moves to the state partition the first time the script runs, so the client warns
+about a changed key exactly once. `ssh-keygen -R <hostname>.local` on the development machine
+clears it. After that the fingerprint stays the same across reboots, overlay or not.
+
+> **The `10-` in the file name is a precaution.** sshd keeps the first value it reads, and
+> cloud-init can leave a `50-cloud-init.conf` with `PasswordAuthentication yes` in the same
+> directory. On this device's Trixie image the directory was empty (2026-10-25), but an Imager
+> or OS release that writes one would otherwise silently turn password login back on.
+
+## 9. Status of this device
 
 **Since 2026-10-06 the development device is a shipped-unit configuration.** Its card was
 reflashed and provisioned from blank with `prepare-card.sh` and `provision.sh` — no

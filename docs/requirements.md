@@ -296,6 +296,10 @@ Two of them cannot be checked on a development machine at all (9 and 10 need a r
 real power cut), and that is deliberate — an appliance criterion that a simulator can satisfy
 is not testing the thing the milestone is about.
 
+**Status, 2026-10-25: all criteria met on a unit provisioned from a blank card except 2 (needs a
+second Pi), 10 (zero-write measurement outstanding) and 11 (image not yet built) — see the
+roadmap's v0.4 section.**
+
 **Status, 2026-10-06: 6 and 12 met on a unit provisioned from a blank card; 1 and 10 largely
 met, with a clean rerun of the corrected scripts outstanding — see the roadmap's v0.4 section.**
 

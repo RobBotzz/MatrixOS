@@ -16,6 +16,9 @@
 # still provisions a working device, but leaves the root filesystem writable and
 # says so, because a read-only root without somewhere to put state is a device
 # that forgets everything (ADR-0008).
+#
+# Second prerequisite: your SSH key in ~/.ssh/authorized_keys. Step 8 turns
+# password login off (ADR-0016), so the script checks this before anything else.
 
 set -euo pipefail
 
@@ -57,6 +60,13 @@ die() {
 [ "$(id -u)" -eq 0 ] || die "run this with sudo"
 [ "$(uname -m)" = "aarch64" ] || die "this is not a 64-bit Raspberry Pi OS (C-1)"
 [ -f /boot/firmware/config.txt ] || die "/boot/firmware/config.txt is missing — not Raspberry Pi OS Bookworm or newer"
+
+MAINTAINER="${SUDO_USER:-}"
+[ -n "$MAINTAINER" ] && [ "$MAINTAINER" != root ] ||
+  die "run this with sudo from the maintainer account, not as root"
+MAINTAINER_KEYS="$(getent passwd "$MAINTAINER" | cut -d: -f6)/.ssh/authorized_keys"
+grep -qE '(ssh|ecdsa|sk)-[^ ]+ AAAA' "$MAINTAINER_KEYS" 2>/dev/null ||
+  die "no SSH key in $MAINTAINER_KEYS — step 8 turns password login off. From your machine: ssh-copy-id $MAINTAINER@$(hostname).local"
 
 SERIAL_SUFFIX=$(awk -F': ' '/^Serial/ {print tolower(substr($2, length($2) - 3))}' /proc/cpuinfo)
 [ -n "$SERIAL_SUFFIX" ] || SERIAL_SUFFIX=0000
@@ -143,7 +153,7 @@ fi
 step "3. Writable state (FR-39, ADR-0008)"
 # =============================================================================
 # One writable location for everything the device remembers, on its own
-# partition so the read-only root in step 8 cannot take it away.
+# partition so the read-only root in step 9 cannot take it away.
 
 STATE_DEVICE="/dev/disk/by-label/$STATE_LABEL"
 HAVE_STATE_PARTITION=0
@@ -164,7 +174,7 @@ if [ -e "$STATE_DEVICE" ]; then
   fi
 else
   warn "no partition labelled '$STATE_LABEL' — run prepare-card.sh on the card first"
-  warn "the device will work, but step 8 (read-only root) will be skipped"
+  warn "the device will work, but step 9 (read-only root) will be skipped"
   mkdir -p "$STATE_DIR"
 fi
 
@@ -399,7 +409,104 @@ else
 fi
 
 # =============================================================================
-step "8. Read-only root (NFR-20)"
+step "8. Maintainer access (NFR-22, ADR-0016)"
+# =============================================================================
+
+if [ ! -d /etc/cloud ] || [ -e /etc/cloud/cloud-init.disabled ]; then
+  skip "cloud-init disabled"
+else
+  note "disabling cloud-init — the Imager settings it carried are applied by now"
+  touch /etc/cloud/cloud-init.disabled
+fi
+
+CLOUD_SEED=()
+for seed in /boot/firmware/user-data /boot/firmware/network-config /boot/firmware/meta-data; do
+  if [ -e "$seed" ]; then
+    CLOUD_SEED+=("$seed")
+  fi
+done
+if [ ${#CLOUD_SEED[@]} -eq 0 ]; then
+  skip "no cloud-init seed on the boot partition"
+else
+  note "removing the cloud-init seed — it holds the account and the WiFi password in cleartext"
+  mount -o remount,rw /boot/firmware
+  rm -f "${CLOUD_SEED[@]}"
+fi
+
+SSH_KEY_DIR="$STATE_DIR/ssh"
+HOST_KEY="$SSH_KEY_DIR/ssh_host_ed25519_key"
+
+cat >/etc/systemd/system/matrixos-ssh-hostkey.service <<EOF
+# Written by provision.sh (ADR-0016).
+[Unit]
+Description=Generate this unit's SSH host key on the state partition
+RequiresMountsFor=$STATE_DIR
+ConditionPathExists=!$HOST_KEY
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -d -o root -g root -m 0700 $SSH_KEY_DIR
+ExecStart=/usr/bin/ssh-keygen -q -t ed25519 -N "" -C "" -f $HOST_KEY
+
+[Install]
+WantedBy=multi-user.target ssh.service
+EOF
+systemctl daemon-reload
+systemctl -q enable matrixos-ssh-hostkey
+
+if [ -f "$HOST_KEY" ]; then
+  skip "SSH host key on the state partition"
+else
+  note "generating this unit's SSH host key"
+  systemctl start matrixos-ssh-hostkey
+  warn "the host key changes once now. On your machine:  ssh-keygen -R $(hostname).local"
+fi
+
+SSHD_DROPIN=/etc/ssh/sshd_config.d/10-matrixos.conf
+SSHD_CONFIG="# Written by provision.sh (ADR-0016). sshd keeps the first value it reads, and
+# this file has to sort before a 50-cloud-init.conf that turns passwords back on.
+HostKey $HOST_KEY
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers $MAINTAINER"
+
+if [ "$(cat "$SSHD_DROPIN" 2>/dev/null)" = "$SSHD_CONFIG" ]; then
+  skip "SSH by key only, for $MAINTAINER"
+else
+  note "allowing SSH by key only, for $MAINTAINER"
+  printf '%s\n' "$SSHD_CONFIG" >"$SSHD_DROPIN"
+  if ! sshd -t; then
+    rm -f "$SSHD_DROPIN"
+    die "sshd rejected the configuration — removed it again"
+  fi
+fi
+systemctl -q enable ssh
+systemctl reload-or-restart ssh
+
+# Before the password goes: without it, sudo is the only thing that still asks for one.
+SUDOERS=/etc/sudoers.d/010-matrixos-maintainer
+if [ -f "$SUDOERS" ]; then
+  skip "sudo without a password for $MAINTAINER"
+else
+  note "allowing sudo without a password for $MAINTAINER"
+  SUDOERS_NEW=$(mktemp)
+  echo "$MAINTAINER ALL=(ALL) NOPASSWD: ALL" >"$SUDOERS_NEW"
+  visudo -cqf "$SUDOERS_NEW" || die "visudo rejected the sudoers rule"
+  install -m 0440 "$SUDOERS_NEW" "$SUDOERS"
+  rm -f "$SUDOERS_NEW"
+fi
+
+if [ "$(getent shadow "$MAINTAINER" | cut -d: -f2)" = "*" ]; then
+  skip "no password hash for $MAINTAINER"
+else
+  note "removing $MAINTAINER's password — its hash would ship on every unit"
+  usermod -p '*' "$MAINTAINER"
+fi
+
+# =============================================================================
+step "9. Read-only root (NFR-20)"
 # =============================================================================
 
 if [ "$WANT_READONLY" -eq 0 ]; then

@@ -1,5 +1,3 @@
- appnde
-
 # Building the shipped image
 
 How a finished, flashable `.img` is made from a provisioned device
@@ -14,7 +12,9 @@ NFR-22 structurally instead of by checklist.
 
 ## 1. Build the device
 
-On the development machine, with the freshly flashed card in a reader:
+Flash Raspberry Pi OS Lite 64-bit (Trixie) with Raspberry Pi Imager, user name **`admin`** —
+generic because it ships in every unit, and the only account sshd will accept (ADR-0016). Then,
+on the development machine, with the freshly flashed card in a reader:
 
 ```bash
 sudo pi-deployment/prepare-card.sh /dev/sdX
@@ -40,9 +40,15 @@ at the end of the last partition, so the artifact is around 4 GB regardless of w
 built on a 32 GB card or a 128 GB one — and it flashes onto any card at least that large.
 `MATRIXOS_STATE_MB=2048` changes the split if a future app ever needs the room.
 
-Then boot the card in the Pi, copy the repository's `pi-deployment/` across, and:
+Then boot the card in the Pi, copy your public key and the repository's `pi-deployment/` across,
+and provision:
 
 ```bash
+# development machine — provision.sh refuses to run without a key, because it turns
+# password login off (ADR-0016)
+ssh-copy-id admin@<hostname>.local
+
+# on the device
 sudo pi-deployment/provision.sh
 ```
 
@@ -65,7 +71,7 @@ sets `overlayroot=tmpfs:recurse=0` (see ADR-0008), which raspi-config does not r
 # off
 sudo mount -o remount,rw /boot/firmware
 sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reboot
-# on again — provision.sh is idempotent and only redoes step 8
+# on again — provision.sh is idempotent and only redoes step 9
 sudo ~/MatrixOS/pi-deployment/provision.sh && sudo reboot
 ```
 
@@ -84,6 +90,9 @@ sudo sed -i 's/overlayroot=tmpfs[^ ]* //' /boot/firmware/cmdline.txt && sudo reb
 ```
 
 ```bash
+# Otherwise this very session writes its history back when it ends.
+unset HISTFILE
+
 # WiFi: every client profile the build device ever joined. The setup profile stays —
 # it is the way in for the recipient.
 sudo nmcli -t -f NAME,TYPE connection show \
@@ -98,11 +107,18 @@ sudo rm -f /etc/netplan/*.yaml
 rm -f ~/MatrixOS/pi-deployment/.env
 
 # Device state: high scores, settings, the last active app, the remembered network.
-sudo rm -f /var/lib/matrixos/*.conf
-sudo rm -f /var/lib/matrixos/network/*.nmconnection
+# Through sh -c: the directory is daemon's and mode 0700, so a glob expanded by your
+# own shell matches nothing and rm -f says nothing.
+sudo sh -c 'rm -f /var/lib/matrixos/*.conf /var/lib/matrixos/network/*.nmconnection'
 
-# SSH host keys — otherwise every shipped unit shares one identity.
+# SSH host keys — otherwise every shipped unit shares one identity. The ones in
+# /etc/ssh are unused since ADR-0016, but would still ship.
 sudo rm -f /etc/ssh/ssh_host_*
+
+# Everything in ~/.ssh except the maintainer's public key: private keys made on the
+# device (a GitHub deploy key, say) and known_hosts.
+sudo find /home/*/.ssh /root/.ssh -type f ! -name authorized_keys -delete 2>/dev/null
+sudo rm -f /home/*/.git-credentials /root/.git-credentials
 
 # Shell history and logs.
 sudo rm -f /home/*/.bash_history /root/.bash_history
@@ -111,32 +127,41 @@ sudo rm -rf /var/log/*.gz /var/log/*.1 /var/tmp/*
 
 # The machine ID. An empty file makes systemd generate a fresh one on first boot.
 sudo truncate -s 0 /etc/machine-id
+
+# Left by Windows when the card was in a Windows reader.
+sudo rm -rf '/boot/firmware/System Volume Information'
 ```
 
-> **Open, found 2026-10-06:** Raspberry Pi Imager on Trixie writes `user-data` and
-> `network-config` onto the boot partition for cloud-init — the maintainer's account and the WiFi
-> password in cleartext. They are not scrubbed yet. Deleting them is easy; what cloud-init does
-> on a clone without them, and who regenerates the SSH host keys deleted above, has to be checked
-> on a device before this section is final.
-
-Check what is left before going further:
+Two things are not on this list because `provision.sh` already took care of them (ADR-0016): the
+cloud-init seed the Imager writes onto the boot partition — the maintainer's account and the WiFi
+password in cleartext — and the maintainer's password hash. Check what is left before going
+further:
 
 ```bash
 sudo nmcli -f NAME,FILENAME connection show   # only matrixos-setup and lo
-ls -la /var/lib/matrixos /etc/ssh /etc/netplan ~/MatrixOS/pi-deployment
+sudo ls -laR /var/lib/matrixos
+ls -la /etc/ssh /etc/netplan ~/.ssh ~/MatrixOS/pi-deployment
+ls /boot/firmware/{user-data,network-config,meta-data}   # all three: No such file
+sudo getent shadow admin | cut -d: -f2                    # *
 ```
 
-Then re-enable the overlay and shut down:
+Then re-enable the overlay, delete the host key **that this run of `provision.sh` just
+generated**, and shut down:
 
 ```bash
 sudo ~/MatrixOS/pi-deployment/provision.sh
+sudo sh -c 'rm -f /var/lib/matrixos/ssh/ssh_host_*'
 sudo shutdown -h now
 ```
 
-> **SSH host keys on a read-only device.** They are regenerated on every boot into the RAM
-> overlay, so the fingerprint changes each time the unit restarts. That is a diagnostic
-> annoyance for the maintainer, not a fault, and it is the honest consequence of not writing
-> anything to the card in normal operation (NFR-20).
+The order of the last three lines matters. `provision.sh` makes sure the build device has a host
+key, so deleting it before the script runs would only have it regenerated — and then cloned onto
+every unit.
+
+> **SSH host keys on a shipped unit.** Each unit generates its own on its first boot, onto the
+> state partition, so the fingerprint stays the same across reboots and a factory reset. That
+> one key is the only thing the device writes to the card without being asked to remember
+> something (NFR-20).
 
 ---
 
@@ -174,6 +199,9 @@ Flash the shrunk image onto a second card and check, in this order:
    join succeeds (FR-33, FR-34).
 3. `matrixos-xxxx.local` serves the configuration page and shows the version (FR-36, FR-41).
 4. `nmcli connection show` lists no network the maintainer has ever joined (NFR-22).
+   `ssh-keyscan -t ed25519 matrixos-xxxx.local` shows a different key than the build device
+   did, and `ssh -o PubkeyAuthentication=no admin@matrixos-xxxx.local` is refused without a
+   password prompt (ADR-0016).
 5. Two reboots later, `lsblk` still shows `matrixos-state`, and the WiFi is still remembered.
 6. Pulling the plug during operation, ten times, leaves a device that boots (NFR-19).
 

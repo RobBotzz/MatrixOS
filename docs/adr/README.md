@@ -23,6 +23,7 @@ decision consciously left open is visibly different from one that was never cons
 | [0013](0013-wifi-provisioning-via-networkmanager.md) | WiFi provisioning through NetworkManager, driven by `nmcli` | Accepted |
 | [0014](0014-config-page-in-the-binary.md) | Two web pages, built differently, both compiled into the binary | Accepted |
 | [0015](0015-time-provider-and-unknown-time.md) | A time provider, and an explicit "time unknown" state | Accepted |
+| [0016](0016-maintainer-access-to-shipped-units.md) | Maintainer access to shipped units — SSH by key only, cloud-init off | Accepted |
 
 ## Conventions
 

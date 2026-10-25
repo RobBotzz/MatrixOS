@@ -125,7 +125,9 @@ parted -s "$DISK" unit s mkpart primary ext4 "${STATE_START_S}s" "${STATE_END_S}
 partprobe "$DISK"
 sleep 1
 
-mkfs.ext4 -q -L "$STATE_LABEL" "$STATE_PART"
+# -F: a reflashed card still carries the previous state filesystem at this exact
+# offset — the Imager writes only its own partitions — and mkfs would ask.
+mkfs.ext4 -F -q -L "$STATE_LABEL" "$STATE_PART"
 
 # The root filesystem must not be expanded again on first boot, or it would eat
 # the partition we just created. Raspberry Pi OS does that from cmdline.txt:

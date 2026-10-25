@@ -1,7 +1,7 @@
 # Roadmap
 
-Status: v0.1 to v0.3 complete; v0.4 built, provisioned from a blank card on 2026-10-06, its
-setup-flow, durability and image criteria still open. Last revised 2026-10-06.
+Status: v0.1 to v0.3 complete; v0.4 built and verified on a clean card on 2026-10-25, with the
+image (11), the zero-write measurement (10) and a second unit (2) still open. Last revised 2026-10-25.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -674,27 +674,57 @@ partition — confirmed with `nmcli -f NAME,FILENAME`.
 | 12 | ✅ | Plasma stays smooth while the page is reloaded rapidly. A visual check — there is no FPS counter readable from outside. |
 | 13 | ✅ | Since August. |
 
-#### Next session, in order
+### Tested on the device — 2026-10-25
 
-1. **Put the corrected unit file on the device**: overlay off, copy `matrixos.service` and rerun
-   `provision.sh`, reboot; the journal must no longer warn about `StartLimitIntervalSec`.
-2. **Criterion 7**: watch the panel during boot for `--:--`, then change the zone in Settings.
-3. **Criteria 8, 3, 5, 4**, in that order and without a terminal: factory reset from the
-   configuration page → the panel asks to join `MatrixOS-f74b` → join with a wrong password
-   (panel says so, AP returns) → join with the right one → reboot and confirm the network is
-   remembered, which is what fix 4 is for. On this unit the Imager's netplan profile is deleted
-   only in the RAM overlay and returns on reboot; a scrubbed unit has none. If it gets in the
-   way, delete it once with the overlay off.
-4. **Criterion 10**: `journalctl --header` shows a runtime journal only; the write counter in
-   `/sys/block/mmcblk0/stat` stays flat over an hour of normal use.
-5. **Criterion 9**: ten power cuts.
-6. **Criteria 1 and 11 together**: flash the card fresh and run the corrected scripts in one
-   pass — that is criterion 1 — then use that unit as the image build device. Before scrubbing,
-   settle the three open questions: what to do with cloud-init's `user-data` and
-   `network-config`, who regenerates SSH host keys on Trixie once they are deleted, and whether
-   the maintainer account belongs in a shipped image at all. Windows also left a `System Volume
-   Information` folder on the boot partition, which should not ship either.
-7. **Criterion 2** whenever a second Pi is at hand.
+The three scrub questions were settled first, at the desk, in
+[ADR-0016](adr/0016-maintainer-access-to-shipped-units.md): SSH by key only for a generic
+`admin` account with no password, a per-unit host key generated on first boot onto the state
+partition, and cloud-init switched off. Checking the device before the change showed that
+cloud-init was not merely redundant: with `preserve_hostname: false` and
+`manage_etc_hosts: true` it rewrote the hostname and `/etc/hosts` on every boot, in a race with
+`matrixos-identity`.
+
+The new step 8 was first run on the existing card, then the card was reflashed — user `admin`,
+key-only SSH set in the Imager — and taken through `prepare-card.sh`, `provision.sh` and
+`deploy.sh` in one pass, with no manual step in between.
+
+Found on the way, all fixed in the scripts or docs:
+
+- **The scrub's state deletions never worked.** `sudo rm -f /var/lib/matrixos/*.conf` is expanded
+  by the maintainer's shell, which cannot list the `daemon`-owned 0700 directory, so the glob
+  matched nothing and `rm -f` stayed silent. Device state would have shipped in every image.
+- **The scrub session wrote its own history back** at shutdown. `unset HISTFILE` first.
+- **`prepare-card.sh` stopped at an interactive `mkfs` prompt** on a reflashed card: the Imager
+  writes only its own partitions, so the previous state filesystem is still at that offset.
+  `mkfs.ext4 -F`.
+- **A unit joined to a guest WLAN cannot be reset.** The FRITZ!Box isolates guests from the home
+  network and from each other, so the configuration page — the only way to the factory reset —
+  is unreachable from any phone or PC. Not a v0.4 defect, since the criterion says "from the
+  configuration page", but a real way to strand a device; it is in the backlog below.
+
+**Criteria after this session** ([requirements.md §5.3](requirements.md#53-v04--appliance)):
+
+| # | State | Evidence or what is missing |
+| - | ----- | --------------------------- |
+| 1 | ✅ | Blank card → `prepare-card.sh` → `provision.sh` + `deploy.sh` → reboot, one pass, panel up. |
+| 2 | ⏳ | Needs a second Pi. The serial-derived name and AP name are confirmed on this one. |
+| 3, 4, 5 | ✅ | Factory reset → panel shows `MatrixOS-f74b` → phone lands on the setup page → wrong password reported, AP back → right password joins. |
+| 6 | ✅ | Since 2026-10-06. |
+| 7 | ✅ | Zone change in Settings moves the panel's time; `--:--` until the sync after power-on. |
+| 8 | ✅ | Factory reset from the configuration page, no terminal. |
+| 9 | ✅ | Power cuts during normal operation and during state writes; device boots, store intact. Reported by the maintainer, no log output kept. |
+| 10 | 🟡 | Overlay root, `ro` boot, journal under `/run` only, rpi-swap disabled — all confirmed after the clean pass. The one-hour write-counter measurement was not taken. |
+| 11 | ⏳ | Scrub questions settled (ADR-0016); image not built yet. |
+| 12 | ✅ | Since 2026-10-06. |
+| 13 | ✅ | Since August; 265 host tests pass on 2026-10-25. |
+
+#### Next
+
+1. **Criterion 11**: scrub this unit following [image-build.md](image-build.md), take the image,
+   flash it onto the card again and run the verification list there.
+2. **Criterion 10**: one hour, write counters for `mmcblk0p1` and `p2` unchanged — can run on the
+   test flash from step 1.
+3. **Criterion 2** whenever a second Pi is at hand.
 
 ---
 
@@ -933,6 +963,16 @@ one. As a personal app that is the point; on a shipped device it is a menu entry
 use, which is an argument for per-app configuration being able to hide apps entirely.
 
 ### Platform and UI
+
+#### Factory reset on the device itself
+
+Found on 2026-10-25: a unit joined to a guest WLAN is unreachable — the router isolates guests
+from the home network and from each other — and the configuration page is the only way to the
+factory reset (FR-42). The recipient is then stuck with a device on a network they cannot reach
+it on. A reset from the hardware closes that gap, for example holding the home button through
+boot, or a deliberate long gesture in Settings with a confirmation. Small, but it touches the
+gesture vocabulary of [ADR-0009](adr/0009-dedicated-home-button.md), so the gesture wants
+deciding before the code.
 
 #### Carousel launcher
 
