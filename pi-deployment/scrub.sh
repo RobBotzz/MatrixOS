@@ -3,13 +3,14 @@
 # Removes everything from a provisioned build device that must not be cloned into
 # somebody's living room (NFR-22), turns the overlay back on and powers off.
 #
-#   sudo setsid -f ~/MatrixOS/pi-deployment/scrub.sh; tail -f /run/matrixos-scrub.log
+#   sudo systemd-run --unit=matrixos-scrub --setenv=SUDO_USER=$USER ~/MatrixOS/pi-deployment/scrub.sh
+#   tail -f /run/matrixos-scrub.log
 #
-# Run with the overlay disabled (image-build.md §2), as the maintainer via sudo:
-# the final provision.sh run needs SUDO_USER. Detached, because deleting the WiFi
-# profiles drops the SSH session it was started from. The log lives in /run, so
-# it does not ship. A panel that goes dark means it finished; the proof is the
-# test flash (image-build.md §4).
+# Run with the overlay disabled (image-build.md §2). SUDO_USER is for the final
+# provision.sh run. Detached through systemd, because deleting the WiFi profiles
+# drops the SSH session it was started from; `sudo setsid -f` did not even get it
+# started. The log lives in /run, so it does not ship. A panel that goes dark
+# means it finished; the proof is the test flash (image-build.md §4).
 
 set -euo pipefail
 

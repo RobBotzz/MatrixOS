@@ -108,7 +108,8 @@ Then:
 
 ```bash
 unset HISTFILE
-sudo setsid -f ~/MatrixOS/pi-deployment/scrub.sh; sleep 1; tail -f /run/matrixos-scrub.log
+sudo systemd-run --unit=matrixos-scrub --setenv=SUDO_USER=$USER ~/MatrixOS/pi-deployment/scrub.sh
+sleep 2; tail -f /run/matrixos-scrub.log
 ```
 
 The log stops when the WiFi goes; the panel going dark a minute later is the end of it. If the
@@ -123,16 +124,33 @@ that shows what would actually ship.
 
 ## 3. Take the image
 
-On the development machine, with the card in a reader. `dd` stops at the end of the last
-partition, so it copies around 4 GB instead of the whole card:
+On the development machine, with the card in a reader. On WSL the reader is passed through
+with `usbipd attach --wsl --busid <busid>` from an administrator PowerShell; `wsl --mount` does
+not take USB storage. `dd` stops at the end of the last partition, so it copies around 4 GB
+instead of the whole card:
 
 ```bash
-END=$(sudo sfdisk -l -o End /dev/sdX | tail -1 | tr -d ' ')
-sudo dd if=/dev/sdX of=matrixos-0.4.0.img bs=4M iflag=count_bytes count=$(( (END + 1) * 512 )) \
-  status=progress conv=fsync
-sudo sfdisk -l matrixos-0.4.0.img      # three partitions, the last one matrixos-state
-xz -T0 -v matrixos-0.4.0.img           # -> matrixos-0.4.0.img.xz, flashable as it is
+D=/dev/$(sudo lsblk -nro PKNAME,LABEL | awk '$2=="matrixos-state"{print $1}')
+[ "$D" != "/dev/" ] && echo "card: $D" || echo "STOP: no card with a matrixos-state partition"
+TOTAL=$(( ($(sudo sfdisk -l -o End $D | tail -1 | tr -d ' ') + 1) * 512 ))
+sudo dd if=$D of=$HOME/matrixos-0.4.0.img bs=4M iflag=count_bytes count=$TOTAL status=progress conv=fsync
+echo "expected: $TOTAL  got: $(stat -c %s $HOME/matrixos-0.4.0.img)"   # must match
+sudo chown $USER: $HOME/matrixos-0.4.0.img
+xz -T0 -v $HOME/matrixos-0.4.0.img     # -> .img.xz, flashable as it is; deletes the .img
 ```
+
+**Compare the two sizes before compressing.** Over `usbipd` the first copy on 2026-10-25 broke
+off at 3.7 of 4.4 GB with `Input/output error`, and `dd`'s exit status is easy to miss in the
+scroll. The part already copied is good up to a whole 4 MB block, so the rest can be read on
+its own rather than starting over:
+
+```bash
+HAVE=$(stat -c %s $HOME/matrixos-0.4.0.img)
+sudo dd if=$D of=$HOME/matrixos-0.4.0.img bs=4M iflag=skip_bytes,count_bytes oflag=seek_bytes \
+  skip=$HAVE seek=$HAVE count=$(( TOTAL - HAVE )) conv=notrunc,fsync status=progress
+```
+
+If the error comes back at the same offset, the card itself has a bad spot.
 
 **No PiShrink.** It shrinks the *last* partition to its contents and adds a first-boot
 expansion hook. On this layout the last partition is `matrixos-state`, not the root, so it would
