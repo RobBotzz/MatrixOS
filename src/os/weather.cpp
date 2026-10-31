@@ -26,7 +26,7 @@ constexpr std::string_view kLatitude = "latitude";
 constexpr std::string_view kLongitude = "longitude";
 
 constexpr int kForecastHours = 12;
-constexpr int kForecastDays = 4;
+constexpr int kForecastDays = 3;
 
 std::string coordinate(double value)
 {
@@ -116,7 +116,8 @@ std::optional<Forecast> parseForecast(std::string_view json)
         {
             forecast.hours.push_back({hourOf(hour_times.at(i).get<std::string>()),
                                       hourly.at("temperature_2m").at(i).get<float>(),
-                                      skyFromCode(hourly.at("weather_code").at(i).get<int>())});
+                                      skyFromCode(hourly.at("weather_code").at(i).get<int>()),
+                                      hourly.at("is_day").at(i).get<int>() != 0});
         }
 
         const auto &daily = root.at("daily");
@@ -142,7 +143,7 @@ std::string forecastUrl(const Place &place)
     return "https://api.open-meteo.com/v1/forecast?latitude=" + coordinate(place.latitude) +
            "&longitude=" + coordinate(place.longitude) +
            "&current=temperature_2m,weather_code,is_day"
-           "&hourly=temperature_2m,weather_code"
+           "&hourly=temperature_2m,weather_code,is_day"
            "&daily=weather_code,temperature_2m_max,temperature_2m_min"
            "&timezone=auto&forecast_hours=" +
            std::to_string(kForecastHours) + "&forecast_days=" + std::to_string(kForecastDays);
@@ -191,16 +192,18 @@ WeatherSnapshot WeatherService::snapshot() const
 void WeatherService::setPlace(Place place)
 {
     logInfo("weather: place set to {}", place.name);
+
+    // Outside the lock: an fsync on the SD card must not stall snapshot() (FR-27).
+    saved_.setString(kName, place.name);
+    saved_.setString(kLatitude, coordinate(place.latitude));
+    saved_.setString(kLongitude, coordinate(place.longitude));
+    saved_.save();
+
     {
         std::lock_guard lock(mutex_);
         place_ = std::move(place);
         forecast_.reset();
         place_changed_ = true;
-
-        saved_.setString(kName, place_.name);
-        saved_.setString(kLatitude, coordinate(place_.latitude));
-        saved_.setString(kLongitude, coordinate(place_.longitude));
-        saved_.save();
     }
     wake_.notify_all();
 }
@@ -218,9 +221,18 @@ bool WeatherService::refresh()
     std::optional<Forecast> forecast = body ? parseForecast(*body) : std::nullopt;
     if (!forecast)
     {
-        logWarn("weather: no forecast for {}", place.name);
+        if (!failing_)
+        {
+            logWarn("weather: no forecast for {}, retrying", place.name);
+        }
+        failing_ = true;
         return false;
     }
+    if (failing_)
+    {
+        logInfo("weather: forecast for {} again", place.name);
+    }
+    failing_ = false;
 
     std::lock_guard lock(mutex_);
     if (place_changed_)

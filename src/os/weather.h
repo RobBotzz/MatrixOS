@@ -51,6 +51,7 @@ struct Forecast
         int hour = 0;
         float temperature = 0.0F;
         Sky sky = Sky::Clear;
+        bool daytime = true;
     };
 
     struct Day
@@ -128,6 +129,7 @@ private:
     Place place_;
     std::optional<Forecast> forecast_;
     std::chrono::steady_clock::time_point fetched_at_{};
+    bool failing_ = false; ///< only `refresh()` touches it, so a failure logs once
 
     std::condition_variable wake_;
     bool place_changed_ = false;

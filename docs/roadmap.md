@@ -781,7 +781,9 @@ that unit:
 - `apps/weather` — now, the next hours in three-hour steps, the next three days; pixel icons for
   seven kinds of sky; an amber corner marker when stale; a placeholder in the shape of the real
   thing before the first forecast.
-- 13 tests, among them one that holds a fetch open and reads a snapshot meanwhile (FR-27).
+- 17 tests, among them one that holds a fetch open and reads a snapshot meanwhile (FR-27), and
+  the worker's schedule: retry after a failure, wait after a success, fetch at once for a new
+  place, drop a forecast for a place changed mid-fetch.
   Checked end to end in the simulator against the real API: a place change on the page reaches
   a new forecast within two seconds.
 

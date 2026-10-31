@@ -6,6 +6,7 @@
 
 #include "net/weather_routes.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +29,12 @@ std::optional<double> number(std::string_view text, double limit)
         return std::nullopt;
     }
     return value;
+}
+
+bool hasControlCharacter(std::string_view text)
+{
+    return std::any_of(text.begin(), text.end(),
+                       [](char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7f; });
 }
 
 std::string fixed(double value, int decimals)
@@ -59,7 +66,8 @@ HttpResponse setWeatherPlace(WeatherService &weather, const HttpRequest &request
     const std::optional<double> latitude = number(request.param("latitude"), 90.0);
     const std::optional<double> longitude = number(request.param("longitude"), 180.0);
 
-    if (name.empty() || name.size() > kMaxNameLength || !latitude || !longitude)
+    if (name.empty() || name.size() > kMaxNameLength || hasControlCharacter(name) || !latitude ||
+        !longitude)
     {
         return HttpResponse::text(400, "name, latitude and longitude are required");
     }

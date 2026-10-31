@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 using namespace matrixos;
 using Catch::Matchers::ContainsSubstring;
@@ -32,16 +33,58 @@ constexpr const char *kResponse = R"({
    "2026-10-31T17:00","2026-10-31T18:00","2026-10-31T19:00","2026-10-31T20:00",
    "2026-10-31T21:00","2026-10-31T22:00","2026-10-31T23:00","2026-11-01T00:00"],
   "temperature_2m":[11.1,11.3,11.4,11.0,10.7,10.2,9.8,9.4,9.0,8.6,8.2,7.9],
-  "weather_code":[3,3,3,61,3,3,3,3,80,3,3,61]},
- "daily":{"time":["2026-10-31","2026-11-01","2026-11-02","2026-11-03"],
-  "weather_code":[80,61,61,61],"temperature_2m_max":[11.4,11.1,8.6,7.9],
-  "temperature_2m_min":[7.9,6.5,6.1,5.5]}})";
+  "weather_code":[3,3,3,61,3,3,3,3,80,3,3,61],"is_day":[1,1,1,1,0,0,0,0,0,0,0,0]},
+ "daily":{"time":["2026-10-31","2026-11-01","2026-11-02"],
+  "weather_code":[80,61,61],"temperature_2m_max":[11.4,11.1,8.6],
+  "temperature_2m_min":[7.9,6.5,6.1]}})";
 
 constexpr Duration kFrame{1.0F / 60.0F};
 
 WeatherService::Fetch answering(std::optional<std::string> body)
 {
     return [body](const std::string &) { return body; };
+}
+
+/// Records the worker's fetches so a test can wait for it to reach one.
+class FetchLog
+{
+public:
+    WeatherService::Fetch answering(std::optional<std::string> body)
+    {
+        return [this, body](const std::string &url)
+        {
+            std::lock_guard lock(mutex_);
+            urls_.push_back(url);
+            fetched_.notify_all();
+            return body;
+        };
+    }
+
+    bool waitFor(std::size_t count)
+    {
+        std::unique_lock lock(mutex_);
+        return fetched_.wait_for(lock, std::chrono::seconds(2),
+                                 [&] { return urls_.size() >= count; });
+    }
+
+    std::vector<std::string> urls() const
+    {
+        std::lock_guard lock(mutex_);
+        return urls_;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::condition_variable fetched_;
+    std::vector<std::string> urls_;
+};
+
+WeatherService::Timing timingOf(std::chrono::milliseconds refresh, std::chrono::milliseconds retry)
+{
+    WeatherService::Timing timing;
+    timing.refresh = refresh;
+    timing.retry = retry;
+    return timing;
 }
 
 int litPixels(const Surface &frame)
@@ -79,9 +122,11 @@ TEST_CASE("an Open-Meteo forecast parses into now, hours and days")
     REQUIRE(forecast->hours.size() == 12);
     CHECK(forecast->hours[0].hour == 13);
     CHECK(forecast->hours[3].sky == Sky::Rain);
+    CHECK(forecast->hours[0].daytime);
+    CHECK_FALSE(forecast->hours[6].daytime);
     CHECK(forecast->hours[11].hour == 0);
 
-    REQUIRE(forecast->days.size() == 4);
+    REQUIRE(forecast->days.size() == 3);
     CHECK(forecast->days[0].weekday == 6); // Saturday
     CHECK(forecast->days[1].weekday == 0);
     CHECK(forecast->days[2].low == 6.1F);
@@ -204,6 +249,61 @@ TEST_CASE("a hanging request never blocks a reader (FR-27)")
     released.notify_all();
 }
 
+TEST_CASE("after a failure the worker retries on the short interval")
+{
+    FetchLog log;
+    StateStore store = StateStore::inMemory();
+    WeatherService weather(store, log.answering(std::nullopt),
+                           timingOf(std::chrono::hours(1), std::chrono::milliseconds(5)));
+    weather.begin();
+
+    CHECK(log.waitFor(3));
+}
+
+TEST_CASE("after a success the worker waits for the refresh interval")
+{
+    FetchLog log;
+    StateStore store = StateStore::inMemory();
+    WeatherService weather(store, log.answering(kResponse),
+                           timingOf(std::chrono::hours(1), std::chrono::milliseconds(5)));
+    weather.begin();
+
+    REQUIRE(log.waitFor(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(log.urls().size() == 1);
+}
+
+TEST_CASE("a new place is fetched at once, not at the next refresh")
+{
+    FetchLog log;
+    StateStore store = StateStore::inMemory();
+    WeatherService weather(store, log.answering(kResponse),
+                           timingOf(std::chrono::hours(1), std::chrono::hours(1)));
+    weather.begin();
+
+    REQUIRE(log.waitFor(1));
+    weather.setPlace({"Graz", 47.0673, 15.4420});
+    REQUIRE(log.waitFor(2));
+    CHECK_THAT(log.urls()[1], ContainsSubstring("latitude=47.0673"));
+}
+
+TEST_CASE("a forecast for a place changed mid-fetch is dropped")
+{
+    StateStore store = StateStore::inMemory();
+    WeatherService *service = nullptr;
+    WeatherService weather(store,
+                           [&service](const std::string &) -> std::optional<std::string>
+                           {
+                               service->setPlace({"Graz", 47.0673, 15.4420});
+                               return kResponse;
+                           });
+    service = &weather;
+
+    CHECK_FALSE(weather.refresh());
+    CHECK(weather.snapshot().place.name == "Graz");
+    CHECK_FALSE(weather.snapshot().forecast);
+}
+
 TEST_CASE("the configuration page sets the place, and bad input is refused")
 {
     StateStore store = StateStore::inMemory();
@@ -217,6 +317,11 @@ TEST_CASE("the configuration page sets the place, and bad input is refused")
     HttpRequest bad;
     bad.params = {{"name", "Nowhere"}, {"latitude", "123"}, {"longitude", "15"}};
     CHECK(setWeatherPlace(weather, bad).status == 400);
+    CHECK(weather.snapshot().place.name == "Graz");
+
+    HttpRequest control;
+    control.params = {{"name", "Graz\nlatitude=0"}, {"latitude", "47"}, {"longitude", "15"}};
+    CHECK(setWeatherPlace(weather, control).status == 400);
     CHECK(weather.snapshot().place.name == "Graz");
 
     CHECK_THAT(weatherJson(weather.snapshot()), ContainsSubstring("\"name\":\"Graz\""));

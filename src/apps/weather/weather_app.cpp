@@ -124,8 +124,7 @@ void drawIcon(Surface &surface, int x, int y, const Icon &icon, int scale,
 
 std::string degrees(float temperature)
 {
-    const long rounded = std::lround(temperature);
-    return std::to_string(rounded == 0 ? 0 : rounded);
+    return std::to_string(std::lround(temperature));
 }
 
 /// A temperature with a small ring for the degree sign, which the font lacks.
@@ -267,7 +266,7 @@ void WeatherApp::renderHours(Surface &surface, const Forecast &forecast) const
         const std::string label = (hour.hour < 10 ? "0" : "") + std::to_string(hour.hour);
 
         drawText(surface, centre - textWidth(label) / 2, 0, label, kLabel);
-        drawIcon(surface, centre - 4, 10, iconFor(hour.sky, true), 1);
+        drawIcon(surface, centre - 4, 10, iconFor(hour.sky, hour.daytime), 1);
         drawCenteredTemperature(surface, centre, 22, degrees(hour.temperature), kText);
     }
 }

@@ -13,10 +13,10 @@ namespace matrixos
 {
 
 /// An HTTPS GET through the `curl` binary (ADR-0017). Blocks for up to
-/// `kTimeoutSeconds`; never call it from the render thread. Any failure —
+/// `kHttpTimeoutSeconds`; never call it from the render thread. Any failure —
 /// offline, DNS, a non-2xx status, a timeout — is `nullopt`.
 std::optional<std::string> httpsGet(const std::string &url);
 
-constexpr int kTimeoutSeconds = 20;
+constexpr int kHttpTimeoutSeconds = 20;
 
 } // namespace matrixos
