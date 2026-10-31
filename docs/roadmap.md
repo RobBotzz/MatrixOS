@@ -1,7 +1,7 @@
 # Roadmap
 
 Status: v0.1 to v0.3 complete; v0.4 verified on a clean card and its image built on 2026-10-31,
-with the zero-write measurement (10) and a second unit (2) still open. Last revised 2026-10-31.
+with the zero-write measurement (10) still open; criterion 2 waived. Last revised 2026-10-31.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -707,7 +707,7 @@ Found on the way, all fixed in the scripts or docs:
 | # | State | Evidence or what is missing |
 | - | ----- | --------------------------- |
 | 1 | ✅ | Blank card → `prepare-card.sh` → `provision.sh` + `deploy.sh` → reboot, one pass, panel up. |
-| 2 | ⏳ | Needs a second Pi. The serial-derived name and AP name are confirmed on this one. |
+| 2 | ➖ | Waived on 2026-10-31 by the maintainer: no second Pi. Name and AP name are derived from the CPU serial, confirmed on this unit; two units are not tested. |
 | 3, 4, 5 | ✅ | Factory reset → panel shows `MatrixOS-f74b` → phone lands on the setup page → wrong password reported, AP back → right password joins. |
 | 6 | ✅ | Since 2026-10-06. |
 | 7 | ✅ | Zone change in Settings moves the panel's time; `--:--` until the sync after power-on. |
@@ -736,15 +736,14 @@ that unit:
   `matrixos-state` 256M.
 - Password login refused without a prompt.
 
-**Criterion 11 is met.** The suffix half of step 1 needs a second Pi and goes with criterion 2.
+**Criterion 11 is met.** The suffix half of step 1 needs a second Pi and is waived with criterion 2.
 
 #### Next
 
 1. **Criterion 10**: write counters on the test flash, 13:17 on 2026-10-31 — `p1 8`, `p2 10`,
    `p3 586`. After an hour of normal use, `p1` and `p2` must be unchanged.
-2. **Criterion 2** whenever a second Pi is at hand — then v0.4 is complete.
-3. Revoke the old GitHub deploy token if not done; the new one is in `.ghtoken`, git-ignored.
-4. Before the next release image: one script for image-build.md §3, so a short copy cannot be
+2. Revoke the old GitHub deploy token if not done; the new one is in `.ghtoken`, git-ignored.
+3. Before the next release image: one script for image-build.md §3, so a short copy cannot be
    compressed by accident.
 
 ---

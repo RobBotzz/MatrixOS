@@ -296,8 +296,9 @@ Two of them cannot be checked on a development machine at all (9 and 10 need a r
 real power cut), and that is deliberate — an appliance criterion that a simulator can satisfy
 is not testing the thing the milestone is about.
 
-**Status, 2026-10-31: 11 met — the image was built, flashed and verified. Open: 2 (needs a second
-Pi) and 10 (zero-write measurement running).**
+**Status, 2026-10-31: 11 met — the image was built, flashed and verified. 2 waived by the
+maintainer: there is no second Pi, and the serial-derived names are confirmed on the one unit.
+Open: 10 (zero-write measurement running).**
 
 **Status, 2026-10-25: all criteria met on a unit provisioned from a blank card except 2 (needs a
 second Pi), 10 (zero-write measurement outstanding) and 11 (image not yet built) — see the
