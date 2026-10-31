@@ -7,21 +7,12 @@
 #include "net/nmcli_wifi.h"
 
 #include "os/log.h"
-
-#include <poll.h>
-#include <signal.h>
-#include <spawn.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include "os/process.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <chrono>
 #include <cstdlib>
-#include <cstring>
 #include <map>
-
-extern char **environ;
 
 namespace matrixos
 {
@@ -39,108 +30,6 @@ constexpr int kProfileTimeoutMs = 40000;
 constexpr int kScanAttempts = 3;
 
 constexpr const char *kWifiType = "802-11-wireless";
-
-/// Runs a command with an explicit argument vector — no shell, so nothing in an
-/// SSID or a password can be interpreted (ADR-0013).
-///
-/// Returns the exit status, or -1 if the child could not be started or had to be
-/// killed on the timeout. The child is always reaped: a device that runs for
-/// months must not accumulate a zombie per scan.
-int runCommand(const std::vector<std::string> &args, std::string *output, int timeout_ms)
-{
-    int fds[2] = {-1, -1};
-    if (::pipe(fds) != 0)
-    {
-        return -1;
-    }
-
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, fds[0]);
-    posix_spawn_file_actions_addclose(&actions, fds[1]);
-
-    std::vector<char *> argv;
-    argv.reserve(args.size() + 1);
-    for (const std::string &arg : args)
-    {
-        argv.push_back(const_cast<char *>(arg.c_str()));
-    }
-    argv.push_back(nullptr);
-
-    pid_t pid = 0;
-    const int spawned = ::posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    ::close(fds[1]);
-
-    if (spawned != 0)
-    {
-        ::close(fds[0]);
-        logWarn("nmcli: cannot run '{}': {}", args[0], std::strerror(spawned));
-        return -1;
-    }
-
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    bool timed_out = false;
-
-    for (;;)
-    {
-        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   deadline - std::chrono::steady_clock::now())
-                                   .count();
-        if (remaining <= 0)
-        {
-            timed_out = true;
-            break;
-        }
-
-        pollfd fd{fds[0], POLLIN, 0};
-        const int ready = ::poll(&fd, 1, static_cast<int>(remaining));
-        if (ready == 0)
-        {
-            timed_out = true;
-            break;
-        }
-        if (ready < 0)
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            break;
-        }
-
-        char chunk[4096];
-        const ssize_t count = ::read(fds[0], chunk, sizeof(chunk));
-        if (count <= 0)
-        {
-            break; // the child closed stdout, which it does when it exits
-        }
-        if (output != nullptr)
-        {
-            output->append(chunk, static_cast<std::size_t>(count));
-        }
-    }
-
-    ::close(fds[0]);
-
-    if (timed_out)
-    {
-        logWarn("nmcli: '{}' timed out after {} ms", args[1], timeout_ms);
-        ::kill(pid, SIGKILL);
-    }
-
-    int status = 0;
-    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR)
-    {
-    }
-
-    if (timed_out)
-    {
-        return -1;
-    }
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
 
 std::vector<std::string> splitLines(std::string_view text)
 {

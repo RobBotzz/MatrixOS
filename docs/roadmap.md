@@ -756,7 +756,36 @@ that unit:
   service. This milestone is the trigger point.
 - Cross-compile or otherwise provide TLS + HTTP + JSON for aarch64.
 - Off-loop fetching with timeouts (FR-27) and graceful staleness (FR-28).
-- **Weather** — rotate to change the forecast window, hold to change location.
+- **Weather** — rotate to change the forecast window.
+
+### Decided before the code — 2026-10-31
+
+- **ADR-0004 resolved by [ADR-0017](adr/0017-http-through-the-curl-binary.md):** requests run the
+  device's `curl` binary through the same process runner as `nmcli`, from a worker thread; JSON
+  through nlohmann/json; data from Open-Meteo. No TLS library is cross-compiled at all, which
+  was the cost ADR-0004 feared.
+- **One place, not several.** Set on the configuration page by searching a city; the search runs
+  in the browser against Open-Meteo's geocoding API, so the device only stores a name and
+  coordinates. "Hold to change location" is dropped with it.
+- Acceptance criteria in [requirements.md §5.4](requirements.md#54-v05--network-foundation).
+
+### Built — 2026-10-31
+
+- `os/process` — the process runner, moved out of `nmcli_wifi.cpp` for its second user.
+- `net/http_get` — `curl --fail --proto =https --max-time 20`, any failure is `nullopt`.
+- `os/weather` — parsing, the place in the state store (`weather.conf`, Vienna by default), and
+  `WeatherService` with a worker: every 15 minutes, 30 seconds after a failure, at once after
+  the place changes. Older than an hour counts as stale.
+- `net/weather_routes` — `GET`/`POST /api/weather`; the configuration page's new weather card
+  searches Open-Meteo's geocoder in the browser and posts the pick.
+- `apps/weather` — now, the next hours in three-hour steps, the next three days; pixel icons for
+  seven kinds of sky; an amber corner marker when stale; a placeholder in the shape of the real
+  thing before the first forecast.
+- 13 tests, among them one that holds a fetch open and reads a snapshot meanwhile (FR-27).
+  Checked end to end in the simulator against the real API: a place change on the page reaches
+  a new forecast within two seconds.
+
+**Still to do for v0.5:** run it on the device, and check criteria 1–5 there.
 
 Weather is the right first network app: a plain public API, no OAuth, and a failure mode
 (stale forecast) that is harmless.

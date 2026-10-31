@@ -1,6 +1,6 @@
 # ADR-0004: How network apps get their data
 
-- **Status:** Deferred
+- **Status:** Superseded by [ADR-0017](0017-http-through-the-curl-binary.md) — resolved 2026-10-31
 - **Date:** 2026-07-25
 
 ## Context

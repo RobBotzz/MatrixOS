@@ -352,6 +352,27 @@ v0.4 is done when all of the following hold:
 
 ---
 
+### 5.4 v0.5 — network foundation
+
+Written 2026-10-31, before the code. The first app that reads the internet, and with it the
+pattern every later network app follows ([ADR-0017](adr/0017-http-through-the-curl-binary.md)).
+
+v0.5 is done when all of the following hold:
+
+1. **Weather shows the configured place.** Within a minute of the device being online, the app
+   shows the current temperature and conditions there. No API key, no account.
+2. **Rotating changes the forecast window**: now, the next hours, the next days.
+3. **The place is set from the configuration page** by searching a city name and picking a
+   result. It survives a reboot. A fresh unit shows Vienna, for the same reason the time zone
+   defaults to it.
+4. **Losing the network costs nothing but freshness.** The last forecast stays on the panel with
+   a staleness indicator — never an error screen, never a blank panel (FR-28). A device that has
+   never fetched says so in the shape of the real thing, as the clock does.
+5. **A slow or hanging request never costs a frame** (FR-27). Requests have a hard timeout and run
+   off the render thread; a test proves it with a fetch that does not return.
+6. **CI is green for host and aarch64**, and the suite covers parsing the forecast, staleness, the
+   refresh schedule and the app's three windows (NFR-12, NFR-13).
+
 ## 6. Known open questions
 
 | ID  | Question                                                                                                                                                                       | Needed by          |

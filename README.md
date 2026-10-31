@@ -34,6 +34,7 @@ In launcher order:
 | App | What it does |
 | --- | --- |
 | Clock | Three faces; rotate to switch. Says `NO TIME` until the device has actually been told the time. |
+| Weather | Now, the next hours, the next days; rotate to switch. The place is set on the configuration page. Keeps the last forecast, marked as stale, when the network is gone. |
 | Morse | Morse trainer in four modes — tap a dot, hold a dash, or read the code and pick the letter. Separate records for sending and reading. |
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |

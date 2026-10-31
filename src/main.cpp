@@ -14,14 +14,17 @@
 #include "apps/setup/setup_app.h"
 #include "apps/snake/snake.h"
 #include "apps/testpattern/test_pattern.h"
+#include "apps/weather/weather_app.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
 #include "hal/sim/keyboard_input.h"
 #include "hal/sim/terminal_display.h"
 #include "net/fake_wifi.h"
+#include "net/http_get.h"
 #include "net/http_server.h"
 #include "net/nmcli_wifi.h"
 #include "net/portal.h"
+#include "net/weather_routes.h"
 #include "os/clock.h"
 #include "os/identity.h"
 #include "os/log.h"
@@ -29,6 +32,7 @@
 #include "os/shell.h"
 #include "os/state.h"
 #include "os/version.h"
+#include "os/weather.h"
 
 #ifdef MATRIXOS_HAS_PI_HARDWARE
 #include "hal/pi/encoder_input.h"
@@ -247,14 +251,20 @@ int main(int argc, char *argv[])
     matrixos::Provisioning provisioning(*wifi, store);
     matrixos::Portal portal(provisioning, identity, matrixos::kVersion, matrixos::kBuildCommit);
     portal.install(server);
+
+    matrixos::WeatherService weather(store, matrixos::httpsGet);
+    matrixos::installWeatherRoutes(server, weather);
+
     server.start();
 
     provisioning.begin();
+    weather.begin();
 
     matrixos::SystemTimeProvider time;
 
     matrixos::Shell shell(*display, *input, store);
     shell.add(std::make_unique<matrixos::ClockApp>(time));
+    shell.add(std::make_unique<matrixos::WeatherApp>(weather));
     shell.add(std::make_unique<matrixos::MorseApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::PlasmaApp>());
     shell.add(std::make_unique<matrixos::PomodoroApp>());

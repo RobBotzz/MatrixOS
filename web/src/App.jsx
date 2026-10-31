@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import Logo from "./Logo.jsx";
 import NetworkPicker from "./NetworkPicker.jsx";
+import WeatherCard from "./WeatherCard.jsx";
 
 /// How the panel's own states read on a screen. The keys are the ones
 /// os/provisioning.cpp emits, so a state added there shows up as "unknown"
@@ -183,6 +184,8 @@ export default function App() {
                     />
                 )}
             </section>
+
+            {status.state !== "setup" && <WeatherCard />}
 
             <section className="card">
                 <div className="card-head">

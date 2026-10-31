@@ -28,6 +28,14 @@ message(STATUS "MatrixOS: test suite ......... ${MATRIXOS_BUILD_TESTS}")
 
 find_package(Threads REQUIRED)
 
+# JSON for network apps (ADR-0017). Header-only, so the cross build needs nothing more.
+include(FetchContent)
+FetchContent_Declare(json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+)
+FetchContent_MakeAvailable(json)
+
 # =============================================================================
 # Version, for the configuration page (FR-41)
 # =============================================================================
@@ -114,6 +122,8 @@ add_library(matrixos_core STATIC
     src/os/provisioning.cpp
     src/os/identity.cpp
     src/os/clock.cpp
+    src/os/process.cpp
+    src/os/weather.cpp
     src/apps/clock/clock_app.cpp
     src/apps/morse/morse.cpp
     src/apps/plasma/plasma.cpp
@@ -122,6 +132,7 @@ add_library(matrixos_core STATIC
     src/apps/setup/setup_app.cpp
     src/apps/snake/snake.cpp
     src/apps/testpattern/test_pattern.cpp
+    src/apps/weather/weather_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -129,7 +140,7 @@ target_include_directories(matrixos_core PUBLIC
 )
 target_link_libraries(matrixos_core
     PUBLIC Threads::Threads   # the shell sleeps between frames
-    PRIVATE matrixos_warnings
+    PRIVATE matrixos_warnings nlohmann_json::nlohmann_json
 )
 
 # =============================================================================
@@ -167,9 +178,11 @@ endif()
 # built for host and Pi alike so it can be tested without the device.
 
 add_library(matrixos_net STATIC
+    src/net/http_get.cpp
     src/net/http_server.cpp
     src/net/nmcli_wifi.cpp
     src/net/portal.cpp
+    src/net/weather_routes.cpp
 )
 target_link_libraries(matrixos_net
     PUBLIC matrixos_core
@@ -234,6 +247,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_identity.cpp
         tests/test_clock.cpp
         tests/test_setup_app.cpp
+        tests/test_weather.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

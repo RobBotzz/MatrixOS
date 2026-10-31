@@ -11,7 +11,7 @@ decision consciously left open is visibly different from one that was never cons
 | [0001](0001-target-hardware-and-toolchain.md) | Pi Zero 2 W with 64-bit OS, aarch64 toolchain | Accepted |
 | [0002](0002-display-abstraction-and-simulator.md) | Display abstraction with a simulator backend from day one | Accepted |
 | [0003](0003-single-process-app-model.md) | One process, one active app, cooperative tick | Accepted |
-| [0004](0004-network-app-runtime.md) | How network apps get their data | **Deferred** |
+| [0004](0004-network-app-runtime.md) | How network apps get their data | **Superseded by 0017** |
 | [0005](0005-deployment-model.md) | Versioned releases with a systemd service | Proposed |
 | [0006](0006-single-encoder-input.md) | A single rotary encoder is the only control | **Superseded by 0009** |
 | [0007](0007-appliance-provisioning.md) | Appliance provisioning — golden image, captive portal, setup as an app | Accepted |
@@ -24,6 +24,7 @@ decision consciously left open is visibly different from one that was never cons
 | [0014](0014-config-page-in-the-binary.md) | Two web pages, built differently, both compiled into the binary | Accepted |
 | [0015](0015-time-provider-and-unknown-time.md) | A time provider, and an explicit "time unknown" state | Accepted |
 | [0016](0016-maintainer-access-to-shipped-units.md) | Maintainer access to shipped units — SSH by key only, cloud-init off | Accepted |
+| [0017](0017-http-through-the-curl-binary.md) | HTTP through the `curl` binary, in-process | Accepted |
 
 ## Conventions
 
