@@ -845,6 +845,14 @@ anywhere. Proposed in [ADR-0018](adr/0018-pictures-through-ntfy.md), criteria in
 - 15 tests. Checked in the simulator against the real ntfy.sh: the poll runs, the send link is
   served.
 
+**GIF search on the sending page — 2026-10-31.** Trending GIFs, a search and a few quick ideas
+that survive 64x32 ("pixel art", "8 bit", "retro"), from GIPHY's API; a pick goes through the same
+conversion as an upload. GIPHY sends `Access-Control-Allow-Origin: *` on its media, which is
+what lets the page decode them. The API key comes from the repository variable `GIPHY_KEY` at
+build time — public in the page by GIPHY's design, but kept out of git so scrapers do not burn
+its quota of about 100 searches an hour. Without the variable the page shows the upload alone.
+"Powered by GIPHY" is on the card, as GIPHY requires.
+
 **Still to do for v0.6:** enable GitHub Pages (Settings → Pages → Source: GitHub Actions), then
 send a picture from a phone to the device and walk through the criteria.
 

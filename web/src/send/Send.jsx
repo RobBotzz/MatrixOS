@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import Logo from "../Logo.jsx";
+import GifSearch, { GIPHY_KEY } from "./GifSearch.jsx";
 import { HEIGHT, WIDTH, convert, encode } from "./picture.js";
 
 const NTFY = "https://ntfy.sh";
@@ -102,9 +103,11 @@ export default function Send() {
                 </div>
             </header>
 
+            {GIPHY_KEY && <GifSearch onPick={setFile} disabled={busy} />}
+
             <section className="card">
                 <label className="field">
-                    <span>Picture or GIF</span>
+                    <span>{GIPHY_KEY ? "Or upload your own picture or GIF" : "Picture or GIF"}</span>
                     <input
                         type="file"
                         accept="image/*"

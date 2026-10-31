@@ -470,3 +470,40 @@ button:hover:not(:disabled) {
     background: #000;
     image-rendering: pixelated;
 }
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0;
+}
+
+.small-print {
+    font-size: 12px;
+}
+
+.gif-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.gif {
+    padding: 0;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background: #000;
+}
+
+.gif img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.gif-picked {
+    border-color: #ff4326;
+}

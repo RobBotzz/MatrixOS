@@ -35,6 +35,8 @@ jobs:
 
       - name: Build
         working-directory: web
+        env:
+          VITE_GIPHY_KEY: ${{ vars.GIPHY_KEY }}
         run: |
           npm ci
           npm run build:send
