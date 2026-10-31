@@ -6,40 +6,8 @@ export const HEIGHT = 32;
 export const MAX_FRAMES = 100;
 const MIN_DELAY_MS = 20;
 
-function panelCanvas() {
-    const canvas = document.createElement("canvas");
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
-    return canvas;
-}
-
-/// Draws `source` onto a 64x32 frame: "fill" crops to cover the panel, "fit"
-/// shows all of it with black bars. Returns the RGB bytes.
-function toPanel(source, sourceWidth, sourceHeight, mode) {
-    const canvas = panelCanvas();
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    context.fillStyle = "#000";
-    context.fillRect(0, 0, WIDTH, HEIGHT);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-
-    const scale =
-        mode === "fill"
-            ? Math.max(WIDTH / sourceWidth, HEIGHT / sourceHeight)
-            : Math.min(WIDTH / sourceWidth, HEIGHT / sourceHeight);
-    const width = sourceWidth * scale;
-    const height = sourceHeight * scale;
-    context.drawImage(source, (WIDTH - width) / 2, (HEIGHT - height) / 2, width, height);
-
-    const rgba = context.getImageData(0, 0, WIDTH, HEIGHT).data;
-    const rgb = new Uint8Array(WIDTH * HEIGHT * 3);
-    for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
-        rgb[j] = rgba[i];
-        rgb[j + 1] = rgba[i + 1];
-        rgb[j + 2] = rgba[i + 2];
-    }
-    return rgb;
-}
+/// How far past "fill" the zoom goes.
+const MAX_ZOOM_PAST_FILL = 4;
 
 /// Every GIF frame composed onto the full logical screen, honouring the
 /// "restore to background" disposal; the others leave the canvas as it is.
@@ -74,7 +42,7 @@ function composeGif(buffer) {
         copy.width = width;
         copy.height = height;
         copy.getContext("2d").drawImage(screen, 0, 0);
-        composed.push({ canvas: copy, delay: frame.delay });
+        composed.push({ source: copy, delay: frame.delay });
         previous = frame;
     }
     return { frames: composed, width, height };
@@ -92,39 +60,113 @@ function thin(frames) {
     return kept;
 }
 
-/// Returns `{ frames: [{ rgb, delay }] }`, ready for preview and for `encode`.
-export async function convert(file, mode) {
+/// Decodes once: `{ frames: [{ source, delay }], width, height }` at full size.
+/// Cropping happens later, as often as the user drags.
+export async function decode(file) {
     if (file.type === "image/gif") {
-        const { frames, width, height } = composeGif(await file.arrayBuffer());
-        if (frames.length > 1) {
-            return {
-                frames: thin(frames).map((frame) => ({
-                    rgb: toPanel(frame.canvas, width, height, mode),
-                    delay: Math.min(Math.max(frame.delay, MIN_DELAY_MS), 65535),
-                })),
-            };
+        const gif = composeGif(await file.arrayBuffer());
+        if (gif.frames.length > 1) {
+            const frames = thin(gif.frames).map((frame) => ({
+                source: frame.source,
+                delay: Math.min(Math.max(frame.delay, MIN_DELAY_MS), 65535),
+            }));
+            return { frames, width: gif.width, height: gif.height };
         }
     }
 
     const bitmap = await createImageBitmap(file);
-    const rgb = toPanel(bitmap, bitmap.width, bitmap.height, mode);
-    bitmap.close();
-    return { frames: [{ rgb, delay: 0 }] };
+    return { frames: [{ source: bitmap, delay: 0 }], width: bitmap.width, height: bitmap.height };
+}
+
+/// The crop is a zoom relative to "show all of it" and the point of the
+/// picture, in 0..1, that sits in the middle of the panel.
+function fitScale(decoded) {
+    return Math.min(WIDTH / decoded.width, HEIGHT / decoded.height);
+}
+
+export function fillZoom(decoded) {
+    return Math.max(WIDTH / decoded.width, HEIGHT / decoded.height) / fitScale(decoded);
+}
+
+export function maxZoom(decoded) {
+    return fillZoom(decoded) * MAX_ZOOM_PAST_FILL;
+}
+
+/// Keeps the panel inside the picture wherever the picture is larger than the
+/// panel, and centred where it is smaller.
+export function clampCrop(decoded, crop) {
+    const zoom = Math.min(Math.max(crop.zoom, 1), maxZoom(decoded));
+    const scale = fitScale(decoded) * zoom;
+    const axis = (centre, size, panel) => {
+        const half = panel / scale / 2 / size;
+        return half >= 0.5 ? 0.5 : Math.min(Math.max(centre, half), 1 - half);
+    };
+    return {
+        zoom,
+        x: axis(crop.x, decoded.width, WIDTH),
+        y: axis(crop.y, decoded.height, HEIGHT),
+    };
+}
+
+export function presetCrop(decoded, preset) {
+    return { zoom: preset === "fill" ? fillZoom(decoded) : 1, x: 0.5, y: 0.5 };
+}
+
+/// Moves the crop by a distance measured in panel pixels.
+export function panCrop(decoded, crop, dx, dy) {
+    const scale = fitScale(decoded) * crop.zoom;
+    return clampCrop(decoded, {
+        ...crop,
+        x: crop.x - dx / scale / decoded.width,
+        y: crop.y - dy / scale / decoded.height,
+    });
+}
+
+/// One frame, cropped, as 64x32 RGB bytes.
+export function renderFrame(decoded, frame, crop) {
+    const canvas = document.createElement("canvas");
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+
+    const scale = fitScale(decoded) * crop.zoom;
+    const width = decoded.width * scale;
+    const height = decoded.height * scale;
+    context.drawImage(
+        frame.source,
+        WIDTH / 2 - crop.x * width,
+        HEIGHT / 2 - crop.y * height,
+        width,
+        height,
+    );
+
+    const rgba = context.getImageData(0, 0, WIDTH, HEIGHT).data;
+    const rgb = new Uint8Array(WIDTH * HEIGHT * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+        rgb[j] = rgba[i];
+        rgb[j + 1] = rgba[i + 1];
+        rgb[j + 2] = rgba[i + 2];
+    }
+    return rgb;
 }
 
 /// "MXP1", width, height, frame count (u16 LE), then per frame its delay
-/// (u16 LE) and the RGB bytes.
-export function encode(picture) {
+/// (u16 LE) and the RGB bytes — every frame cropped the same way.
+export function encode(decoded, crop) {
     const frameBytes = WIDTH * HEIGHT * 3;
-    const bytes = new Uint8Array(8 + picture.frames.length * (2 + frameBytes));
+    const bytes = new Uint8Array(8 + decoded.frames.length * (2 + frameBytes));
     bytes.set([0x4d, 0x58, 0x50, 0x31, WIDTH, HEIGHT], 0);
     const view = new DataView(bytes.buffer);
-    view.setUint16(6, picture.frames.length, true);
+    view.setUint16(6, decoded.frames.length, true);
 
     let at = 8;
-    for (const frame of picture.frames) {
+    for (const frame of decoded.frames) {
         view.setUint16(at, frame.delay, true);
-        bytes.set(frame.rgb, at + 2);
+        bytes.set(renderFrame(decoded, frame, crop), at + 2);
         at += 2 + frameBytes;
     }
     return bytes;

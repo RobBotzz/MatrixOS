@@ -853,6 +853,10 @@ build time — public in the page by GIPHY's design, but kept out of git so scra
 its quota of about 100 searches an hour. Without the variable the page shows the upload alone.
 "Powered by GIPHY" is on the card, as GIPHY requires.
 
+**Choosing the crop — 2026-10-31.** The preview on the sending page is interactive: drag to move
+the crop, pinch, scroll or slide to zoom, with "fill" and "show all" as presets. Decoding happens
+once; the preview crops only the frame on show, and all frames are cropped alike when sending.
+
 **Still to do for v0.6:** enable GitHub Pages (Settings → Pages → Source: GitHub Actions), then
 send a picture from a phone to the device and walk through the criteria.
 

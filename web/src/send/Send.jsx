@@ -2,47 +2,124 @@ import { useEffect, useRef, useState } from "react";
 
 import Logo from "../Logo.jsx";
 import GifSearch, { GIPHY_KEY } from "./GifSearch.jsx";
-import { HEIGHT, WIDTH, convert, encode } from "./picture.js";
+import {
+    HEIGHT,
+    WIDTH,
+    clampCrop,
+    decode,
+    encode,
+    fillZoom,
+    maxZoom,
+    panCrop,
+    presetCrop,
+    renderFrame,
+} from "./picture.js";
 
 const NTFY = "https://ntfy.sh";
 const TOPIC = /^matrixos-[a-z0-9]{20}$/;
 
-function Preview({ picture }) {
+/// The panel as it will look. Drag to move the crop, pinch or scroll to zoom.
+function Preview({ decoded, crop, onCrop }) {
     const canvas = useRef(null);
+    const cropRef = useRef(crop);
+    const frameRef = useRef(0);
+    const pointers = useRef(new Map());
+    const pinch = useRef(null);
+
+    const draw = () => {
+        const context = canvas.current.getContext("2d");
+        const rgb = renderFrame(decoded, decoded.frames[frameRef.current], cropRef.current);
+        const image = context.createImageData(WIDTH, HEIGHT);
+        for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
+            image.data[i] = rgb[j];
+            image.data[i + 1] = rgb[j + 1];
+            image.data[i + 2] = rgb[j + 2];
+            image.data[i + 3] = 255;
+        }
+        context.putImageData(image, 0, 0);
+    };
 
     useEffect(() => {
-        if (!picture) return undefined;
-        const context = canvas.current.getContext("2d");
-        const image = context.createImageData(WIDTH, HEIGHT);
-        let index = 0;
-        let timer = null;
-
-        const draw = () => {
-            const { rgb, delay } = picture.frames[index];
-            for (let i = 0, j = 0; j < rgb.length; i += 4, j += 3) {
-                image.data[i] = rgb[j];
-                image.data[i + 1] = rgb[j + 1];
-                image.data[i + 2] = rgb[j + 2];
-                image.data[i + 3] = 255;
-            }
-            context.putImageData(image, 0, 0);
-            if (picture.frames.length > 1) {
-                index = (index + 1) % picture.frames.length;
-                timer = window.setTimeout(draw, delay);
-            }
-        };
+        cropRef.current = crop;
         draw();
-        return () => window.clearTimeout(timer);
-    }, [picture]);
+    }, [crop]);
 
-    return <canvas ref={canvas} width={WIDTH} height={HEIGHT} className="preview" />;
+    useEffect(() => {
+        frameRef.current = 0;
+        if (decoded.frames.length < 2) return undefined;
+        let timer = null;
+        const tick = () => {
+            frameRef.current = (frameRef.current + 1) % decoded.frames.length;
+            draw();
+            timer = window.setTimeout(tick, decoded.frames[frameRef.current].delay);
+        };
+        timer = window.setTimeout(tick, decoded.frames[0].delay);
+        return () => window.clearTimeout(timer);
+    }, [decoded]);
+
+    useEffect(() => {
+        const element = canvas.current;
+        const wheel = (event) => {
+            event.preventDefault();
+            const zoom = cropRef.current.zoom * Math.exp(-event.deltaY * 0.002);
+            onCrop(clampCrop(decoded, { ...cropRef.current, zoom }));
+        };
+        element.addEventListener("wheel", wheel, { passive: false });
+        return () => element.removeEventListener("wheel", wheel);
+    }, [decoded, onCrop]);
+
+    const distance = () => {
+        const [a, b] = [...pointers.current.values()];
+        return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+
+    const down = (event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        pinch.current = pointers.current.size === 2 ? distance() : null;
+    };
+
+    const move = (event) => {
+        const last = pointers.current.get(event.pointerId);
+        if (!last) return;
+        const next = { x: event.clientX, y: event.clientY };
+        pointers.current.set(event.pointerId, next);
+
+        if (pointers.current.size === 2 && pinch.current) {
+            const now = distance();
+            const zoom = cropRef.current.zoom * (now / pinch.current);
+            pinch.current = now;
+            onCrop(clampCrop(decoded, { ...cropRef.current, zoom }));
+        } else if (pointers.current.size === 1) {
+            const pixels = WIDTH / canvas.current.clientWidth;
+            onCrop(panCrop(decoded, cropRef.current, (next.x - last.x) * pixels, (next.y - last.y) * pixels));
+        }
+    };
+
+    const up = (event) => {
+        pointers.current.delete(event.pointerId);
+        pinch.current = null;
+    };
+
+    return (
+        <canvas
+            ref={canvas}
+            width={WIDTH}
+            height={HEIGHT}
+            className="preview preview-interactive"
+            onPointerDown={down}
+            onPointerMove={move}
+            onPointerUp={up}
+            onPointerCancel={up}
+        />
+    );
 }
 
 export default function Send() {
     const topic = window.location.hash.slice(1);
     const [file, setFile] = useState(null);
-    const [mode, setMode] = useState("fill");
-    const [picture, setPicture] = useState(null);
+    const [decoded, setDecoded] = useState(null);
+    const [crop, setCrop] = useState(null);
     const [state, setState] = useState({ tone: null, text: null });
     const [busy, setBusy] = useState(false);
 
@@ -50,13 +127,17 @@ export default function Send() {
         if (!file) return;
         let cancelled = false;
         setState({ tone: null, text: null });
-        convert(file, mode)
-            .then((result) => !cancelled && setPicture(result))
+        decode(file)
+            .then((result) => {
+                if (cancelled) return;
+                setDecoded(result);
+                setCrop(presetCrop(result, "fill"));
+            })
             .catch(() => !cancelled && setState({ tone: "bad", text: "This file could not be read as a picture." }));
         return () => {
             cancelled = true;
         };
-    }, [file, mode]);
+    }, [file]);
 
     const send = async () => {
         setBusy(true);
@@ -65,7 +146,7 @@ export default function Send() {
             const response = await fetch(`${NTFY}/${topic}`, {
                 method: "PUT",
                 headers: { Filename: "picture.mxp" },
-                body: new Blob([encode(picture)], { type: "application/octet-stream" }),
+                body: new Blob([encode(decoded, crop)], { type: "application/octet-stream" }),
             });
             if (!response.ok) throw new Error();
             setState({ tone: "ok", text: "Sent. It shows up on the panel within a minute or two." });
@@ -115,20 +196,33 @@ export default function Send() {
                     />
                 </label>
 
-                {picture && (
+                {decoded && crop && (
                     <>
-                        <Preview picture={picture} />
+                        <Preview decoded={decoded} crop={crop} onCrop={setCrop} />
+                        <p className="hint-line">Drag to move · pinch, scroll or slide to zoom</p>
+                        <input
+                            type="range"
+                            className="zoom"
+                            min={1}
+                            max={maxZoom(decoded)}
+                            step="any"
+                            value={crop.zoom}
+                            onChange={(event) =>
+                                setCrop(clampCrop(decoded, { ...crop, zoom: Number(event.target.value) }))
+                            }
+                            disabled={busy}
+                        />
                         <div className="row">
                             <button
-                                className={mode === "fill" ? "primary" : "ghost"}
-                                onClick={() => setMode("fill")}
+                                className={Math.abs(crop.zoom - fillZoom(decoded)) < 0.001 ? "primary" : "ghost"}
+                                onClick={() => setCrop(presetCrop(decoded, "fill"))}
                                 disabled={busy}
                             >
                                 Fill the panel
                             </button>
                             <button
-                                className={mode === "fit" ? "primary" : "ghost"}
-                                onClick={() => setMode("fit")}
+                                className={crop.zoom === 1 ? "primary" : "ghost"}
+                                onClick={() => setCrop(presetCrop(decoded, "fit"))}
                                 disabled={busy}
                             >
                                 Show all of it

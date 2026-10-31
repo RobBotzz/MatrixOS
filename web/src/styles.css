@@ -507,3 +507,24 @@ button:hover:not(:disabled) {
 .gif-picked {
     border-color: #ff4326;
 }
+
+.preview-interactive {
+    touch-action: none;
+    cursor: grab;
+}
+
+.preview-interactive:active {
+    cursor: grabbing;
+}
+
+.hint-line {
+    margin: -6px 0 8px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+}
+
+.zoom {
+    width: 100%;
+    margin: 0 0 12px;
+}
