@@ -269,6 +269,10 @@ bool Provisioning::requestReset()
             wifi_.forget();
             saved_.setString(kSsidKey, "");
             saved_.save();
+            if (on_reset_)
+            {
+                on_reset_();
+            }
             logInfo("provisioning: reset to factory state");
             openAccessPoint(SetupState::AccessPoint, {});
         });

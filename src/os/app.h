@@ -38,6 +38,10 @@ public:
 
     virtual std::string_view name() const = 0;
 
+    /// False for apps that must not lose the panel to an arriving picture —
+    /// games and timers (ADR-0018).
+    virtual bool interruptible() const { return true; }
+
     /// Becoming the active app.
     virtual void onEnter() {}
 

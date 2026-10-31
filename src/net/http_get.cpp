@@ -17,7 +17,8 @@ std::optional<std::string> httpsGet(const std::string &url)
     std::string body;
     const int status = runCommand({"curl", "--fail", "--silent", "--show-error", "--proto",
                                    "=https", "--max-time", std::to_string(kHttpTimeoutSeconds),
-                                   "--user-agent", std::string("MatrixOS/") + kVersion, url},
+                                   "--max-filesize", std::to_string(kHttpMaxBytes), "--user-agent",
+                                   std::string("MatrixOS/") + kVersion, url},
                                   &body, (kHttpTimeoutSeconds + 5) * 1000);
     if (status != 0)
     {

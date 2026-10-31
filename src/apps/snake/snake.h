@@ -57,6 +57,7 @@ public:
     SnakeApp(StateStore &store, std::uint32_t seed);
 
     std::string_view name() const override { return "Snake"; }
+    bool interruptible() const override { return false; }
 
     void onEnter() override;
     void onExit() override;

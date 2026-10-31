@@ -375,6 +375,33 @@ v0.5 is done when all of the following hold:
 6. **CI is green for host and aarch64**, and the suite covers parsing the forecast, staleness, the
    refresh schedule and the app's three windows (NFR-12, NFR-13).
 
+### 5.5 v0.6 — pictures from outside
+
+Written 2026-10-31, before the code. People send each other pictures through a mailbox the
+unit polls ([ADR-0018](adr/0018-pictures-through-ntfy.md)).
+
+v0.6 is done when all of the following hold:
+
+1. **Every unit has its own send link.** The configuration page shows it; two units flashed
+   from the same image have different links.
+2. **Anyone with the link can send from a phone**, without a unit or an account: pick a picture
+   or a GIF, see a 64x32 preview of exactly what the panel will show, send.
+3. **The picture is on the panel within two minutes** of sending, if the unit is online. GIFs
+   play at their own speed.
+4. **The Gallery app** shows the newest picture first, browses by rotating, and changes picture
+   every 30 seconds. With no pictures it says so on the panel.
+5. **A new picture is shown when it arrives** — the panel switches to it — except while Snake,
+   Morse, Pomodoro or setup is on the panel; then it waits until that app is left.
+6. **Thirty pictures are kept**, the oldest goes first, and they survive a reboot.
+7. **A new link ends the old one.** Drawing a new address on the configuration page stops
+   pictures sent to the old link; a factory reset also deletes the stored pictures.
+8. **Bad input is refused, not shown.** A file that is not a valid picture in our format, or is
+   too large, is skipped and logged; nothing from outside can crash the unit or fill the card.
+9. **Polling never costs a frame** (FR-27), and nothing is written to the card while nothing
+   arrives (NFR-20).
+10. **CI is green for host and aarch64**, and the suite covers the format, validation, eviction
+   and the polling cursor.
+
 ## 6. Known open questions
 
 | ID  | Question                                                                                                                                                                       | Needed by          |

@@ -90,6 +90,10 @@ public:
     bool requestConnect(std::string ssid, std::string psk);
     bool requestReset(); ///< FR-42
 
+    /// Runs on the worker as part of every factory reset, for state that is not
+    /// WiFi. Set before `begin()`.
+    void onReset(std::function<void()> callback) { on_reset_ = std::move(callback); }
+
     /// Waits for the worker to finish. Shutdown uses it; so do the tests, which
     /// is what keeps them free of sleeps and of flakiness.
     void waitForIdle();
@@ -116,6 +120,7 @@ private:
     std::condition_variable wake_;
     std::atomic<bool> stopping_{false};
     std::atomic<bool> busy_{false};
+    std::function<void()> on_reset_;
     std::thread worker_;
 };
 

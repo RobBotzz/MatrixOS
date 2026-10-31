@@ -19,4 +19,7 @@ std::optional<std::string> httpsGet(const std::string &url);
 
 constexpr int kHttpTimeoutSeconds = 20;
 
+/// Above any picture (ADR-0018) or forecast; a larger answer is a failure.
+constexpr long kHttpMaxBytes = 2 * 1024 * 1024;
+
 } // namespace matrixos

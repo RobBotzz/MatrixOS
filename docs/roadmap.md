@@ -812,6 +812,42 @@ Weather is the right first network app: a plain public API, no OAuth, and a fail
 - Image/GIF decode and downscale to 64x32.
 - Storage management (how many uploads, eviction policy).
 
+### Discussed before the code — 2026-10-31
+
+The goal moved from "upload to my device" to **people sending each other pictures**, from
+anywhere. Proposed in [ADR-0018](adr/0018-pictures-through-ntfy.md), criteria in
+[requirements.md §5.5](requirements.md#55-v06--pictures-from-outside):
+
+- **ntfy.sh as the mailbox.** Each unit's address is a secret topic; the unit polls it once a
+  minute through curl. No server of our own.
+- **A static sending page on GitHub Pages** — anyone with a unit's link can send. The browser
+  converts the picture to 64x32 frames, so the unit needs no image decoder.
+- **No caption, no QR code.** Thirty pictures kept, oldest first out.
+- **A new picture takes the panel**, except in Snake, Morse, Pomodoro or setup.
+
+### Built — 2026-10-31
+
+- `os/picture` — the `MXP1` format: header, then raw 64x32 RGB frames with a delay each; at most
+  100 frames, delays no shorter than 20 ms. Anything else is refused.
+- `os/gallery` — `GalleryService`: the unit's topic (drawn once, kept in `gallery.conf`), a poll
+  every minute, downloads only from `https://ntfy.sh/file/`, at most 30 pictures in
+  `/var/lib/matrixos/gallery/`, oldest deleted first. The poll cursor is written only when
+  something arrived. `writeAtomically` moved out of `state.cpp` for its second user.
+- `App::interruptible()` — Snake, Morse and Pomodoro say no; `Shell::showOnArrival` switches to
+  the Gallery when a picture arrives and the panel is free, otherwise once it is.
+- `Provisioning::onReset` — a factory reset also draws a new address and deletes the pictures.
+- `apps/gallery` — newest first, rotate to browse, a new picture every 30 seconds, GIFs at their
+  own delays, `NO PICTURES` when empty.
+- Configuration page: a Pictures card with the send link, copy, and "make a new link".
+- `web/send/` — the public sending page: picks a picture or GIF, decodes it in the browser
+  (`gifuct-js` for GIF frames), fill or fit to 64x32, previews, and `PUT`s it to ntfy.sh.
+  Published by `.github/workflows/pages.yml` to `https://robbotzz.github.io/MatrixOS/send/`.
+- 15 tests. Checked in the simulator against the real ntfy.sh: the poll runs, the send link is
+  served.
+
+**Still to do for v0.6:** enable GitHub Pages (Settings → Pages → Source: GitHub Actions), then
+send a picture from a phone to the device and walk through the criteria.
+
 **Swapped ahead of authenticated services — 2026-07-27.** By preference, and it costs nothing:
 the two milestones share no dependency, and both sit on infrastructure that v0.4 and v0.5
 already deliver. It even removes a forward reference — Spotify's cover art needs exactly the

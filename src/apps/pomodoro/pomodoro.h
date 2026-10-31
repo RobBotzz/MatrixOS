@@ -36,6 +36,7 @@ public:
     static constexpr int kDefaultBreakMinutes = 5;
 
     std::string_view name() const override { return "Pomodoro"; }
+    bool interruptible() const override { return false; }
 
     void onInput(const InputEvent &event) override;
     void update(Duration dt) override;

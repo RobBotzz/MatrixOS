@@ -102,6 +102,7 @@ public:
     MorseApp(StateStore &store, std::uint32_t seed);
 
     std::string_view name() const override { return "Morse"; }
+    bool interruptible() const override { return false; }
 
     void onEnter() override;
     void onExit() override;

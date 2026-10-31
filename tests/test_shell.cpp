@@ -710,3 +710,75 @@ TEST_CASE("the time zone reaches the provider, and only when it changes")
     shell.run(stopAfter(shell, 9));
     CHECK(clock.zone == "Asia/Tokyo");
 }
+
+namespace
+{
+
+class BusyApp : public SpyApp
+{
+public:
+    using SpyApp::SpyApp;
+    bool interruptible() const override { return false; }
+};
+
+} // namespace
+
+TEST_CASE("an arriving picture takes the panel from an interruptible app")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls first;
+    Calls gallery;
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
+
+    shell.add(std::make_unique<SpyApp>(first, "First"));
+    const std::size_t target = shell.add(std::make_unique<SpyApp>(gallery, "Gallery"));
+
+    std::uint64_t arrivals = 0;
+    shell.showOnArrival([&arrivals] { return arrivals; }, target);
+
+    std::vector<std::string> names;
+    shell.run(
+        [&]
+        {
+            names.emplace_back(shell.activeName());
+            if (shell.frameCount() == 2)
+            {
+                arrivals = 1;
+            }
+            return shell.frameCount() >= 5;
+        });
+
+    CHECK(names[2] == "First");
+    CHECK(names.back() == "Gallery");
+    CHECK(gallery.entered == 1);
+}
+
+TEST_CASE("a game keeps the panel when a picture arrives")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls game;
+    Calls gallery;
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
+
+    shell.add(std::make_unique<BusyApp>(game, "Game"));
+    const std::size_t target = shell.add(std::make_unique<SpyApp>(gallery, "Gallery"));
+
+    std::uint64_t arrivals = 0;
+    shell.showOnArrival([&arrivals] { return arrivals; }, target);
+
+    std::string last;
+    shell.run(
+        [&]
+        {
+            arrivals = 1;
+            last = shell.activeName();
+            return shell.frameCount() >= 5;
+        });
+
+    CHECK(last == "Game");
+    CHECK(gallery.entered == 0);
+}

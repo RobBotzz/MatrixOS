@@ -89,6 +89,8 @@ bool writeFully(int fd, std::string_view content)
     return true;
 }
 
+} // namespace
+
 /// Temp file, `fsync`, `rename`, `fsync` the directory (FR-40). The final
 /// directory `fsync` is what makes the rename itself durable.
 bool writeAtomically(const std::filesystem::path &target, std::string_view content)
@@ -129,8 +131,6 @@ bool writeAtomically(const std::filesystem::path &target, std::string_view conte
     }
     return true;
 }
-
-} // namespace
 
 StateSection::StateSection(std::filesystem::path path) : path_(std::move(path)) {}
 

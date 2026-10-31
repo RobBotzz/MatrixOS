@@ -7,6 +7,7 @@
 // Composition root: the only place that knows which backends exist.
 
 #include "apps/clock/clock_app.h"
+#include "apps/gallery/gallery_app.h"
 #include "apps/morse/morse.h"
 #include "apps/plasma/plasma.h"
 #include "apps/pomodoro/pomodoro.h"
@@ -20,12 +21,14 @@
 #include "hal/sim/keyboard_input.h"
 #include "hal/sim/terminal_display.h"
 #include "net/fake_wifi.h"
+#include "net/gallery_routes.h"
 #include "net/http_get.h"
 #include "net/http_server.h"
 #include "net/nmcli_wifi.h"
 #include "net/portal.h"
 #include "net/weather_routes.h"
 #include "os/clock.h"
+#include "os/gallery.h"
 #include "os/identity.h"
 #include "os/log.h"
 #include "os/provisioning.h"
@@ -255,16 +258,22 @@ int main(int argc, char *argv[])
     matrixos::WeatherService weather(store, matrixos::httpsGet);
     matrixos::installWeatherRoutes(server, weather);
 
+    matrixos::GalleryService gallery(store, stateRoot() / "gallery", matrixos::httpsGet);
+    matrixos::installGalleryRoutes(server, gallery);
+    provisioning.onReset([&gallery] { gallery.reset(); });
+
     server.start();
 
     provisioning.begin();
     weather.begin();
+    gallery.begin();
 
     matrixos::SystemTimeProvider time;
 
     matrixos::Shell shell(*display, *input, store);
     shell.add(std::make_unique<matrixos::ClockApp>(time));
     shell.add(std::make_unique<matrixos::WeatherApp>(weather));
+    const std::size_t gallery_app = shell.add(std::make_unique<matrixos::GalleryApp>(gallery));
     shell.add(std::make_unique<matrixos::MorseApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::PlasmaApp>());
     shell.add(std::make_unique<matrixos::PomodoroApp>());
@@ -279,6 +288,7 @@ int main(int argc, char *argv[])
 
     shell.useTimeProvider(time);
     shell.superviseSetup(provisioning, setup_app);
+    shell.showOnArrival([&gallery] { return gallery.arrivals(); }, gallery_app);
 
     shell.run([] { return g_interrupted != 0; });
 

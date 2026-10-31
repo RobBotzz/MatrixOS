@@ -7,9 +7,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "embed": "vite build && python3 ../tools/bundle_to_header.py"
+    "embed": "vite build && python3 ../tools/bundle_to_header.py",
+    "build:send": "vite build --config vite.send.config.js"
   },
   "dependencies": {
+    "gifuct-js": "^2.1.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

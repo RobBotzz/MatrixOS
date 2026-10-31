@@ -18,6 +18,10 @@ namespace matrixos
 /// One namespace of persisted state, backed by a single `key=value` file
 /// (ADR-0011). Each file is replaced independently and atomically, so one
 /// namespace cannot corrupt another.
+/// Temp file, `fsync`, `rename`, `fsync` the directory (FR-40): a crash leaves
+/// either the old content or the new.
+bool writeAtomically(const std::filesystem::path &target, std::string_view content);
+
 class StateSection
 {
 public:

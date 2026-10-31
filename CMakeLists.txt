@@ -123,6 +123,8 @@ add_library(matrixos_core STATIC
     src/os/identity.cpp
     src/os/clock.cpp
     src/os/process.cpp
+    src/os/picture.cpp
+    src/os/gallery.cpp
     src/os/weather.cpp
     src/apps/clock/clock_app.cpp
     src/apps/morse/morse.cpp
@@ -133,6 +135,7 @@ add_library(matrixos_core STATIC
     src/apps/snake/snake.cpp
     src/apps/testpattern/test_pattern.cpp
     src/apps/weather/weather_app.cpp
+    src/apps/gallery/gallery_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -178,6 +181,7 @@ endif()
 # built for host and Pi alike so it can be tested without the device.
 
 add_library(matrixos_net STATIC
+    src/net/gallery_routes.cpp
     src/net/http_get.cpp
     src/net/http_server.cpp
     src/net/nmcli_wifi.cpp
@@ -248,6 +252,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_clock.cpp
         tests/test_setup_app.cpp
         tests/test_weather.cpp
+        tests/test_gallery.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

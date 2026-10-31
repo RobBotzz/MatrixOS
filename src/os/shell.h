@@ -12,6 +12,7 @@
 #include "os/log.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -65,6 +66,10 @@ public:
     /// merely one more entry in the launcher.
     void superviseSetup(Provisioning &provisioning, std::size_t setupApp);
 
+    /// Switches to `app` whenever `arrivals` counts up, once the active app is
+    /// interruptible and setup does not have the panel (ADR-0018).
+    void showOnArrival(std::function<std::uint64_t()> arrivals, std::size_t app);
+
     /// Overrides `kSetupSuccessHold`. Only tests have a reason to.
     void setSetupSuccessHold(Duration hold) { setup_hold_ = hold; }
 
@@ -110,6 +115,7 @@ private:
     void applyBrightness();
     void applyTimeZone();
     void applySetupState(Duration dt);
+    void applyArrivals();
 
     /// Turns an exception escaping app code into a dropped app instead of a dead
     /// device (FR-17). Catches crashes, not hangs — a blocking app still freezes
@@ -158,6 +164,10 @@ private:
     /// Counting down to handing the panel back after a successful setup. Absent
     /// when nothing is pending.
     std::optional<Duration> leaving_setup_;
+
+    std::function<std::uint64_t()> arrivals_;
+    std::optional<std::size_t> arrival_index_;
+    std::uint64_t arrivals_seen_ = 0;
 
     Surface frame_;
     unsigned long frames_ = 0;

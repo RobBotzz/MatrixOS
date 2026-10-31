@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import Logo from "./Logo.jsx";
 import NetworkPicker from "./NetworkPicker.jsx";
+import PicturesCard from "./PicturesCard.jsx";
 import WeatherCard from "./WeatherCard.jsx";
 
 /// How the panel's own states read on a screen. The keys are the ones
@@ -187,6 +188,8 @@ export default function App() {
 
             {status.state !== "setup" && <WeatherCard />}
 
+            {status.state !== "setup" && <PicturesCard />}
+
             <section className="card">
                 <div className="card-head">
                     <h2>Device</h2>
@@ -212,7 +215,7 @@ export default function App() {
                     <h2>Factory reset</h2>
                 </div>
                 <p className="lead muted">
-                    Forgets the WiFi network and every linked account. The device reopens its
+                    Forgets the WiFi network, every linked account, the stored pictures and the send link. The device reopens its
                     setup network, and someone has to set it up again from a phone.
                 </p>
                 {confirmingReset ? (

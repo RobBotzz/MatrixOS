@@ -63,6 +63,19 @@ void Shell::superviseSetup(Provisioning &provisioning, std::size_t setupApp)
     setup_index_ = setupApp;
 }
 
+void Shell::showOnArrival(std::function<std::uint64_t()> arrivals, std::size_t app)
+{
+    if (app >= apps_.size())
+    {
+        logError("showOnArrival: no app at index {}", app);
+        return;
+    }
+
+    arrivals_ = std::move(arrivals);
+    arrival_index_ = app;
+    arrivals_seen_ = arrivals_();
+}
+
 std::string_view Shell::activeName() const
 {
     return active_ != nullptr ? active_->name() : std::string_view{};
@@ -111,6 +124,7 @@ void Shell::run(const std::function<bool()> &shouldStop)
         }
 
         applySetupState(dt);
+        applyArrivals();
         applyPending();
 
         // Apps get a clean surface, so none of them has to remember to clear.
@@ -241,6 +255,34 @@ void Shell::applySetupState(Duration dt)
     if (active_ == apps_[*setup_index_].get())
     {
         leaving_setup_ = setup_hold_;
+    }
+}
+
+void Shell::applyArrivals()
+{
+    if (!arrivals_ || !arrival_index_.has_value() || pending_ != Target::None)
+    {
+        return;
+    }
+
+    const std::uint64_t arrivals = arrivals_();
+    if (arrivals == arrivals_seen_)
+    {
+        return;
+    }
+
+    const bool blocked = setup_shown_ || leaving_setup_.has_value() ||
+                         (active_ != nullptr && !active_->interruptible());
+    if (blocked)
+    {
+        return; // still unseen; checked again once the panel is free
+    }
+
+    arrivals_seen_ = arrivals;
+    if (active_ != apps_[*arrival_index_].get())
+    {
+        pending_ = Target::App;
+        pending_index_ = *arrival_index_;
     }
 }
 
