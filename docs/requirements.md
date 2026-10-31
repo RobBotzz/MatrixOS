@@ -357,6 +357,8 @@ v0.4 is done when all of the following hold:
 Written 2026-10-31, before the code. The first app that reads the internet, and with it the
 pattern every later network app follows ([ADR-0017](adr/0017-http-through-the-curl-binary.md)).
 
+**Status, 2026-10-31: all six met** — see the roadmap's v0.5 section.
+
 v0.5 is done when all of the following hold:
 
 1. **Weather shows the configured place.** Within a minute of the device being online, the app
@@ -382,7 +384,7 @@ v0.5 is done when all of the following hold:
 | Q-3 | ~~What is the panel's multiplex/scan type?~~ **Answered — see Resolved below.**                    | v0.1 spike         |
 | Q-4 | ~~Encoder reading strategy: polling or edge events?~~ **Answered — see Resolved below.**                              | v0.1 spike         |
 | Q-5 | ~~Which license?~~ **Answered — see Resolved below.** Remaining action: add the `LICENSE` file (acceptance criterion 8). | v0.1 |
-| Q-6 | In-process HTTP client vs. separate service for network apps. Deliberately deferred, see [ADR-0004](adr/0004-network-app-runtime.md).                                          | first network app  |
+| Q-6 | ~~In-process HTTP client vs. separate service for network apps.~~ **Answered — the `curl` binary, in-process, see [ADR-0017](adr/0017-http-through-the-curl-binary.md).**                                          | first network app  |
 | Q-7 | ~~In what format is app state stored?~~ **Answered — one `key=value` file per namespace, see [ADR-0011](adr/0011-state-store-format.md).** The location was never open (FR-39).                                                      | v0.3               |
 | Q-8 | ~~Two-tier hold or a dedicated home button?~~ **Answered — see Resolved below.** | — |
 | Q-9 | ~~What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32?~~ **Answered — see Resolved below.** | v0.4 |

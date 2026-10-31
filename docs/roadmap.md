@@ -748,7 +748,7 @@ that unit:
 
 ---
 
-## v0.5 — Network foundation
+## v0.5 — Network foundation ✅
 
 **Unlocks:** the hardest infrastructure step in the project.
 
@@ -787,7 +787,16 @@ that unit:
   Checked end to end in the simulator against the real API: a place change on the page reaches
   a new forecast within two seconds.
 
-**Still to do for v0.5:** run it on the device, and check criteria 1–5 there.
+### Closed — 2026-10-31
+
+On the device: the forecast for the configured place, the three windows, a place changed on the
+configuration page that survives a reboot, and a forecast that stays on the panel with the WiFi
+off. Criteria 1–6 of [requirements.md §5.4](requirements.md#54-v05--network-foundation) met;
+3 and 4 on the device as reported by the maintainer, 4's stale marker by the test suite, since
+it appears only after an hour offline.
+
+After a first look on the panel the app got a centred now-screen, a free top row on the other
+two, and windows that take turns every 30 seconds — rotating picks one and restarts the turn.
 
 Weather is the right first network app: a plain public API, no OAuth, and a failure mode
 (stale forecast) that is harmless.

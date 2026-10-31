@@ -304,9 +304,8 @@ void WeatherApp::renderDays(Surface &surface, const Forecast &forecast) const
         const int centre = columnCentre(surface.width(), column);
         const char *label = kWeekdays[static_cast<std::size_t>(day.weekday) % kWeekdays.size()];
 
-        // No room for a gap under the icon: the low already ends on the bottom row.
         drawText(surface, centre - textWidth(label) / 2, kTopMargin, label, kLabel);
-        drawIcon(surface, centre - 4, kTopMargin + 8, iconFor(day.sky, true), 1);
+        drawIcon(surface, centre - 4, kTopMargin + 7, iconFor(day.sky, true), 1);
         drawCenteredTemperature(surface, centre, 17, degrees(day.high), kText);
         drawCenteredTemperature(surface, centre, 25, degrees(day.low), kLow);
     }
