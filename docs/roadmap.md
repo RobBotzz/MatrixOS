@@ -1,7 +1,7 @@
 # Roadmap
 
-Status: v0.1 to v0.3 complete; v0.4 built and verified on a clean card on 2026-10-25, with the
-image (11), the zero-write measurement (10) and a second unit (2) still open. Last revised 2026-10-25.
+Status: v0.1 to v0.3 complete; v0.4 verified on a clean card and its image built on 2026-10-31,
+with the zero-write measurement (10) and a second unit (2) still open. Last revised 2026-10-31.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -714,59 +714,38 @@ Found on the way, all fixed in the scripts or docs:
 | 8 | ✅ | Factory reset from the configuration page, no terminal. |
 | 9 | ✅ | Power cuts during normal operation and during state writes; device boots, store intact. Reported by the maintainer, no log output kept. |
 | 10 | 🟡 | Overlay root, `ro` boot, journal under `/run` only, rpi-swap disabled — all confirmed after the clean pass. The one-hour write-counter measurement was not taken. |
-| 11 | ⏳ | Scrub questions settled (ADR-0016); image not built yet. |
+| 11 | ✅ | 2026-10-31: image built, flashed and checked against image-build.md §4 — see below. |
 | 12 | ✅ | Since 2026-10-06. |
 | 13 | ✅ | Since August; 265 host tests pass on 2026-10-25. |
 
-#### Where the session stopped — resume here
+#### Image built and verified — 2026-10-31
 
-The build card was scrubbed and the image taken, but **the image is incomplete and must not be
-used.** In order:
+The copy that broke off on 2026-10-25 was completed by reading only the missing tail; size
+matched to the byte (4,421,845,504). `matrixos-0.4.0.img.xz` is 545 MB, built from `0a87539`.
 
-- The card was reverted to writable, the build of `0a87539` (CI run 40221810829) deployed, and
-  `scrub.sh` started through `systemd-run`. Its log was followed until the WiFi went, as
-  designed, after which the card was taken out for imaging. The log is gone with the
-  power-off, so whether the scrub ran to its end is checked on the test flash, not assumed.
-- `dd` over `usbipd` broke off with `Input/output error` at 3,703,570,432 of 4,421,845,504
-  bytes, and `xz` then compressed the short copy. **`~/matrixos-0.4.0.img.xz` in WSL is that
-  truncated copy.**
-- The card has not been touched since. It is the only source of the image — do not boot it,
-  and do not flash anything onto it until the image is complete.
+Flashed with Raspberry Pi Imager, no OS customisation, and set up through the phone like a
+recipient would. [image-build.md §4](image-build.md#4-verify-the-image-before-shipping-it) on
+that unit:
 
-Next time, in order:
+- WiFi profiles: only the one just made through the portal, on the state partition, and the
+  setup profile. `/etc/netplan` empty, `/var/lib/cloud` gone, no `.env`, `~/.ssh` holds only
+  `authorized_keys`.
+- State partition: only files written during this boot; a new host key, so the client asked to
+  accept an unknown one.
+- One boot in the journal; `cmdline.txt` without `resize` or `firstboot`; overlay on;
+  `matrixos-state` 256M.
+- Password login refused without a prompt.
 
-1. Card into the reader, `usbipd attach --wsl --busid 2-1` from an administrator PowerShell.
-2. Finish the image in WSL — decompress the short copy and read only the missing part, as in
-   [image-build.md §3](image-build.md#3-take-the-image):
-   ```bash
-   D=/dev/$(sudo lsblk -nro PKNAME,LABEL | awk '$2=="matrixos-state"{print $1}'); echo "card: $D"
-   xz -d $HOME/matrixos-0.4.0.img.xz
-   TOTAL=$(( ($(sudo sfdisk -l -o End $D | tail -1 | tr -d ' ') + 1) * 512 ))
-   HAVE=$(stat -c %s $HOME/matrixos-0.4.0.img)
-   sudo dd if=$D of=$HOME/matrixos-0.4.0.img bs=4M iflag=skip_bytes,count_bytes oflag=seek_bytes \
-     skip=$HAVE seek=$HAVE count=$(( TOTAL - HAVE )) conv=notrunc,fsync status=progress
-   echo "expected: $TOTAL  got: $(stat -c %s $HOME/matrixos-0.4.0.img)"
-   ```
-   Only when the two numbers match: `xz -T0 -v $HOME/matrixos-0.4.0.img`. If the read error
-   recurs at the same offset, the card has a bad spot: reflash a different card and rebuild
-   (§1 and §2 of image-build.md; about 20 minutes).
-3. **Criterion 11**: flash `matrixos-0.4.0.img.xz` with Raspberry Pi Imager onto a card —
-   **"No" to OS customisation**, or the Imager writes a new cloud-init seed with a password and
-   the WiFi onto the boot partition. Boot it and work through
-   [image-build.md §4](image-build.md#4-verify-the-image-before-shipping-it). The unit comes up
-   in setup mode; join it to the normal WLAN, not the guest one. Its host key is new, so
-   `ssh-keygen -R matrixos-f74b` first; `ssh matrix` (alias with user `admin`) then works.
-4. **Criterion 10** on that test flash: write counters of `mmcblk0p1` and `p2` unchanged over one
-   hour.
-5. Mark 10 and 11 here and in requirements.md §5.3. **Criterion 2** stays open until a second Pi
-   is at hand — the only one left for v0.4.
+**Criterion 11 is met.** The suffix half of step 1 needs a second Pi and goes with criterion 2.
 
-Loose ends from this session, none blocking:
+#### Next
 
-- The old GitHub deploy token is to be revoked on GitHub; the new one is in `.ghtoken` in the
-  repository root, git-ignored.
-- A single script for §3 — find the card, copy, check the size, compress — would have prevented
-  the truncated image. Worth writing before the next release image.
+1. **Criterion 10**: write counters on the test flash, 13:17 on 2026-10-31 — `p1 8`, `p2 10`,
+   `p3 586`. After an hour of normal use, `p1` and `p2` must be unchanged.
+2. **Criterion 2** whenever a second Pi is at hand — then v0.4 is complete.
+3. Revoke the old GitHub deploy token if not done; the new one is in `.ghtoken`, git-ignored.
+4. Before the next release image: one script for image-build.md §3, so a short copy cannot be
+   compressed by accident.
 
 ---
 
