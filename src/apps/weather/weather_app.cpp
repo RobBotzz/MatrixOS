@@ -33,6 +33,11 @@ constexpr Color kFlake{220, 240, 255};
 constexpr Color kMoon{230, 225, 180};
 
 constexpr float kReadInterval = 0.5F;
+constexpr float kCycleInterval = 30.0F;
+constexpr int kWindows = 3;
+constexpr int kTopMargin = 1;
+constexpr int kLargeIcon = 16;
+constexpr int kIconGap = 4;
 constexpr int kColumns = 3;
 constexpr int kHourStep = 3;
 constexpr int kMaxPlaceChars = 10;
@@ -190,6 +195,7 @@ void WeatherApp::onEnter()
 {
     snapshot_ = weather_.snapshot();
     since_read_ = 0.0F;
+    since_switch_ = 0.0F;
 }
 
 void WeatherApp::onInput(const InputEvent &event)
@@ -199,9 +205,14 @@ void WeatherApp::onInput(const InputEvent &event)
         return;
     }
 
-    constexpr int kWindows = 3;
-    const int next = (static_cast<int>(window_) + event.delta) % kWindows;
+    step(event.delta);
+}
+
+void WeatherApp::step(int delta)
+{
+    const int next = (static_cast<int>(window_) + delta) % kWindows;
     window_ = static_cast<Window>((next + kWindows) % kWindows);
+    since_switch_ = 0.0F;
 }
 
 void WeatherApp::update(Duration dt)
@@ -211,6 +222,12 @@ void WeatherApp::update(Duration dt)
     {
         snapshot_ = weather_.snapshot();
         since_read_ = 0.0F;
+    }
+
+    since_switch_ += dt.count();
+    if (since_switch_ >= kCycleInterval)
+    {
+        step(1);
     }
 }
 
@@ -246,9 +263,12 @@ void WeatherApp::render(Surface &surface)
 
 void WeatherApp::renderNow(Surface &surface, const Forecast &forecast) const
 {
-    drawIcon(surface, 2, 3, iconFor(forecast.sky, forecast.daytime), 2);
-    drawTemperature(surface, 22, 4, degrees(forecast.temperature), snapshot_.stale ? kLabel : kText,
-                    2);
+    const std::string temperature = degrees(forecast.temperature);
+    const int left =
+        (surface.width() - kLargeIcon - kIconGap - temperatureWidth(temperature, 2)) / 2;
+    drawIcon(surface, left, 3, iconFor(forecast.sky, forecast.daytime), 2);
+    drawTemperature(surface, left + kLargeIcon + kIconGap, 4, temperature,
+                    snapshot_.stale ? kLabel : kText, 2);
     drawTextCentered(surface, 24, panelLabel(snapshot_.place.name), kLabel);
 }
 
@@ -265,9 +285,9 @@ void WeatherApp::renderHours(Surface &surface, const Forecast &forecast) const
         const int centre = columnCentre(surface.width(), column);
         const std::string label = (hour.hour < 10 ? "0" : "") + std::to_string(hour.hour);
 
-        drawText(surface, centre - textWidth(label) / 2, 0, label, kLabel);
-        drawIcon(surface, centre - 4, 10, iconFor(hour.sky, hour.daytime), 1);
-        drawCenteredTemperature(surface, centre, 22, degrees(hour.temperature), kText);
+        drawText(surface, centre - textWidth(label) / 2, kTopMargin, label, kLabel);
+        drawIcon(surface, centre - 4, kTopMargin + 10, iconFor(hour.sky, hour.daytime), 1);
+        drawCenteredTemperature(surface, centre, kTopMargin + 22, degrees(hour.temperature), kText);
     }
 }
 
@@ -284,8 +304,9 @@ void WeatherApp::renderDays(Surface &surface, const Forecast &forecast) const
         const int centre = columnCentre(surface.width(), column);
         const char *label = kWeekdays[static_cast<std::size_t>(day.weekday) % kWeekdays.size()];
 
-        drawText(surface, centre - textWidth(label) / 2, 0, label, kLabel);
-        drawIcon(surface, centre - 4, 8, iconFor(day.sky, true), 1);
+        // No room for a gap under the icon: the low already ends on the bottom row.
+        drawText(surface, centre - textWidth(label) / 2, kTopMargin, label, kLabel);
+        drawIcon(surface, centre - 4, kTopMargin + 8, iconFor(day.sky, true), 1);
         drawCenteredTemperature(surface, centre, 17, degrees(day.high), kText);
         drawCenteredTemperature(surface, centre, 25, degrees(day.low), kLow);
     }
@@ -293,8 +314,9 @@ void WeatherApp::renderDays(Surface &surface, const Forecast &forecast) const
 
 void WeatherApp::renderUnknown(Surface &surface) const
 {
-    drawIcon(surface, 2, 3, kCloudy, 2, kUnknown);
-    drawText(surface, 22, 4, "--", kUnknown, 2);
+    const int left = (surface.width() - kLargeIcon - kIconGap - textWidth("--", 2)) / 2;
+    drawIcon(surface, left, 3, kCloudy, 2, kUnknown);
+    drawText(surface, left + kLargeIcon + kIconGap, 4, "--", kUnknown, 2);
     drawTextCentered(surface, 24, "NO DATA", kStale);
 }
 

@@ -12,7 +12,8 @@
 namespace matrixos
 {
 
-/// The forecast for the configured place (v0.5). Rotating changes the window.
+/// The forecast for the configured place (v0.5). The windows take turns every
+/// 30 seconds; rotating picks one and restarts the turn.
 class WeatherApp : public App
 {
 public:
@@ -35,6 +36,8 @@ public:
     Window window() const { return window_; }
 
 private:
+    void step(int delta);
+
     void renderNow(Surface &surface, const Forecast &forecast) const;
     void renderHours(Surface &surface, const Forecast &forecast) const;
     void renderDays(Surface &surface, const Forecast &forecast) const;
@@ -44,6 +47,7 @@ private:
     WeatherSnapshot snapshot_;
     Window window_ = Window::Now;
     float since_read_ = 0.0F;
+    float since_switch_ = 0.0F;
 };
 
 } // namespace matrixos

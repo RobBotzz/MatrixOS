@@ -375,3 +375,24 @@ TEST_CASE("a stale forecast carries a marker in the corner (FR-28)")
     const Surface frame = draw(app);
     CHECK_FALSE(frame.pixel(63, 0) == Color::black());
 }
+
+TEST_CASE("the windows take turns every 30 seconds, and rotating restarts the turn")
+{
+    StateStore store = StateStore::inMemory();
+    WeatherService weather(store, answering(kResponse));
+    WeatherApp app(weather);
+    app.onEnter();
+
+    app.update(Duration{29.0F});
+    CHECK(app.window() == WeatherApp::Window::Now);
+    app.update(Duration{1.0F});
+    CHECK(app.window() == WeatherApp::Window::Hours);
+
+    app.update(Duration{20.0F});
+    app.onInput({InputType::Rotate, 1});
+    CHECK(app.window() == WeatherApp::Window::Days);
+    app.update(Duration{20.0F});
+    CHECK(app.window() == WeatherApp::Window::Days);
+    app.update(Duration{10.0F});
+    CHECK(app.window() == WeatherApp::Window::Now);
+}
