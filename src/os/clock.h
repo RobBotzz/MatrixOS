@@ -7,6 +7,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -42,6 +43,10 @@ public:
     /// Meaningless while `synchronized()` is false.
     virtual LocalTime now() const = 0;
 
+    /// Seconds since 1970-01-01 UTC, for what depends on where the sun is rather
+    /// than on the zone (the world map). Meaningless while `synchronized()` is false.
+    virtual std::int64_t unixTime() const = 0;
+
     /// A tzdata name such as `Europe/Vienna`. An unknown name means UTC, which
     /// is what glibc does and what the curated list in settings.h avoids.
     virtual void setTimeZone(std::string_view zone) = 0;
@@ -67,6 +72,7 @@ public:
 
     bool synchronized() const override;
     LocalTime now() const override;
+    std::int64_t unixTime() const override;
     void setTimeZone(std::string_view zone) override;
 
 private:

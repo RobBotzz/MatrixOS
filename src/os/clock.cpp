@@ -64,6 +64,11 @@ LocalTime SystemTimeProvider::now() const
     return local;
 }
 
+std::int64_t SystemTimeProvider::unixTime() const
+{
+    return static_cast<std::int64_t>(std::time(nullptr));
+}
+
 void SystemTimeProvider::setTimeZone(std::string_view zone)
 {
     if (zone.empty() || zone == zone_)

@@ -18,6 +18,7 @@
 #include "apps/spotify/spotify_app.h"
 #include "apps/testpattern/test_pattern.h"
 #include "apps/weather/weather_app.h"
+#include "apps/worldmap/world_map_app.h"
 #include "gfx/surface.h"
 #include "hal/display.h"
 #include "hal/sim/keyboard_input.h"
@@ -289,6 +290,7 @@ int main(int argc, char *argv[])
     matrixos::Shell shell(*display, *input, store);
     shell.add(std::make_unique<matrixos::ClockApp>(time));
     shell.add(std::make_unique<matrixos::WeatherApp>(weather));
+    shell.add(std::make_unique<matrixos::WorldMapApp>(time));
     const std::size_t gallery_app = shell.add(std::make_unique<matrixos::GalleryApp>(gallery));
     shell.add(std::make_unique<matrixos::SpotifyApp>(spotify));
     shell.add(std::make_unique<matrixos::MorseApp>(store, std::random_device{}()));

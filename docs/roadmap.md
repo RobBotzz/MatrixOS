@@ -1003,6 +1003,16 @@ afterglow when they die. Rotate for one of five speeds, press for a new random f
 for one of three palettes. A field that only repeats itself (still or period 2) or drops below a
 dozen cells for four seconds is replaced, and so is any field after 2000 generations.
 
+**Day/night world map — built 2026-11-01**, as the app "World". The land mask is the compiled-in
+dataset this list foresaw: `tools/landmask_to_header.py` rasterises Natural Earth's 1:110m land
+(public domain) at 6x6 samples per pixel into 256 bytes in `gfx/world_map_data.h`. The sun's
+position is NOAA's low-precision series, good to a fraction of a degree against a 5.6-degree
+pixel; daylight fades to night between +2 and -12 degrees of elevation, and a yellow pixel marks
+where the sun stands overhead. `TimeProvider` gained `unixTime()`, since the sun cares about UTC,
+not the zone. Rotate moves the time by an hour per detent, up to three days either way, with the
+offset shown; press returns to now; without a synchronised clock it shows the bare map and
+`NO TIME`. The shading is recomputed once a minute of map time, not every frame.
+
 ### Apps that fit the hardware well
 
 | App                                                                       | Interaction                                 | Needs                                                                                                                  |
@@ -1015,7 +1025,7 @@ dozen cells for four seconds is replaced, and so is any field after 2000 generat
 | 2048                                                                      | Rotate to pick a direction, press to commit | Input mapping design — four directions on one encoder                                                                  |
 | Collatz visualiser, infinite terrain                                      | Rotate to change the seed                   | Nothing                                                                                                                |
 | ASCII art                                                                 | Rotate to browse                            | Font work                                                                                                              |
-| Day/night world map                                                       | Rotate to scrub time, press for now         | A 64x32 coastline mask; nothing else — v0.4 already knows the time                                                     |
+| ~~Day/night world map~~ — built 2026-11-01, see below                      | Rotate to scrub time, press for now         | A 64x32 coastline mask; nothing else — v0.4 already knows the time                                                     |
 | Live sport scores                                                         | Rotate through fixtures                     | v0.5 network, plus polling on a far shorter period than Weather                                                        |
 | Flag quiz                                                                 | Rotate through answers, press to commit     | The quiz shell below, a curated flag set, v0.3 persistence                                                             |
 | Who's that Pokémon                                                        | Rotate through answers, press to commit     | The quiz shell below, plus sprite data we almost certainly may not ship — see below                                    |

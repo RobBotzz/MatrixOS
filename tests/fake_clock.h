@@ -26,6 +26,8 @@ public:
 
     bool synchronized() const override { return synced; }
     LocalTime now() const override { return time; }
+    std::int64_t unixTime() const override { return unix_seconds; }
+    std::int64_t unix_seconds = 1785333930; // 2026-07-29 14:05:30 UTC
     void setTimeZone(std::string_view value) override { zone = value; }
 };
 

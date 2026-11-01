@@ -35,6 +35,7 @@ In launcher order:
 | --- | --- |
 | Clock | Three faces; rotate to switch. Says `NO TIME` until the device has actually been told the time. |
 | Weather | Now, the next hours, the next days; rotate to switch. The place is set on the configuration page. Keeps the last forecast, marked as stale, when the network is gone. |
+| World | The world map with day and night on it and the sun where it stands overhead; rotate to move the time by hours, press for now. |
 | Gallery | Pictures and GIFs friends send to this panel through its send link, newest first; rotate to browse. A new picture takes the panel unless a game or timer is running. |
 | Morse | Morse trainer in four modes — tap a dot, hold a dash, or read the code and pick the letter. Separate records for sending and reading. |
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
