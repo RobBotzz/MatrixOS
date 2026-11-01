@@ -1,7 +1,7 @@
 # Roadmap
 
-Status: v0.1 to v0.3 complete; v0.4 verified on a clean card and its image built on 2026-10-31,
-with the zero-write measurement (10) still open; criterion 2 waived. Last revised 2026-10-31.
+Status: v0.1 to v0.3, v0.5 and v0.6 complete; v0.4 verified and its image built, with the
+zero-write measurement (10) still open and criterion 2 waived. Last revised 2026-11-01.
 
 Releases are ordered by **which platform capability they unlock**, not by which app sounds
 most fun. Each milestone is picked so that at most one hard new capability is introduced at
@@ -804,7 +804,7 @@ Weather is the right first network app: a plain public API, no OAuth, and a fail
 
 ---
 
-## v0.6 — Content from outside
+## v0.6 — Content from outside ✅
 
 **Unlocks:** image decoding and upload handling on top of v0.4's HTTP server.
 
@@ -858,8 +858,14 @@ its quota of about 100 searches an hour. Without the variable the page shows the
 the crop, pinch, scroll or slide to zoom, with "fill" and "show all" as presets. Decoding happens
 once; the preview crops only the frame on show, and all frames are cropped alike when sending.
 
-**Still to do for v0.6:** enable GitHub Pages (Settings → Pages → Source: GitHub Actions), then
-send a picture from a phone to the device and walk through the criteria.
+### Closed — 2026-11-01
+
+On the device: the Pictures card with the send link, a GIF found through the search and cropped
+on the phone, the panel switching to the Gallery when it arrives — and not while Snake is
+running — browsing and the 30-second turns, pictures kept across a reboot, and a new link
+ending the old one. All criteria of
+[requirements.md §5.5](requirements.md#55-v06--pictures-from-outside) met, as reported by the
+maintainer.
 
 **Swapped ahead of authenticated services — 2026-07-27.** By preference, and it costs nothing:
 the two milestones share no dependency, and both sit on infrastructure that v0.4 and v0.5

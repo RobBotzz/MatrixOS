@@ -380,6 +380,8 @@ v0.5 is done when all of the following hold:
 Written 2026-10-31, before the code. People send each other pictures through a mailbox the
 unit polls ([ADR-0018](adr/0018-pictures-through-ntfy.md)).
 
+**Status, 2026-11-01: all met** — see the roadmap's v0.6 section.
+
 v0.6 is done when all of the following hold:
 
 1. **Every unit has its own send link.** The configuration page shows it; two units flashed
