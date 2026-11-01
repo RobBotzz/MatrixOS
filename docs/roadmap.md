@@ -924,6 +924,19 @@ zero for every app, by design, so presses stay instant — and Spotify's double-
 pause-then-play. Apps now ask for the gesture (`App::wantsDoublePress`); the shell turns the 300 ms
 window on while such an app is active. See the note on `DoublePress` in requirements.md.
 
+### Strava deferred — 2026-11-01
+
+Creating a Strava API application requires a Strava subscription, which the maintainer does not
+have; there is no clean way around it — reading the website or its embed widgets breaks the terms
+and breaks with every redesign. Decided for when it comes back:
+
+- Like Spotify, through **each owner's own Strava app** — which suits Strava well, since new apps
+  start in single-player mode, where only the owner's account can connect. Strava has no PKCE, so
+  the Client Secret is entered once on the configuration page and kept like the Spotify token.
+- **Running only**, three views: the last activity, this week (summed from the activities since
+  Monday) and this year. Fetched when the app opens and every 15 minutes while it is on the panel.
+- The callback page on GitHub Pages is shared with Spotify.
+
 **Still to do for v0.7:** walk through the criteria on the device.
 
 The OAuth mechanics are described in [ADR-0007](adr/0007-appliance-provisioning.md): the
@@ -984,12 +997,18 @@ no new flicker. Acceptance criteria get written into requirements.md before the 
 
 Wanted but not yet placed in a milestone. Ordering within this list is not meaningful.
 
+**Game of Life — built 2026-11-01**, as its own app rather than a Plasma variant: it has controls
+and state of its own. 64x32, wrapping at the edges, cells coloured from young to old with a short
+afterglow when they die. Rotate for one of five speeds, press for a new random field, long press
+for one of three palettes. A field that only repeats itself (still or period 2) or drops below a
+dozen cells for four seconds is replaced, and so is any field after 2000 generations.
+
 ### Apps that fit the hardware well
 
 | App                                                                       | Interaction                                 | Needs                                                                                                                  |
 | ------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | GIF & Time                                                                | Press to change the animation               | Nothing beyond v0.2                                                                                                    |
-| Plasma / Game of Life / Lissajous / fire / rain / DVD-bounce screensavers | Rotate to switch, press to change palette   | Nothing; these are Plasma variants                                                                                     |
+| Plasma / Lissajous / fire / rain / DVD-bounce screensavers                | Rotate to switch, press to change palette   | Nothing; these are Plasma variants                                                                                     |
 | Pong                                                                      | Rotate to move the paddle                   | v0.3 game loop, plus an AI opponent and absolute paddle positioning from an incremental encoder — see the note in v0.3 |
 | Breakout / Arkanoid                                                       | Rotate to move the paddle                   | v0.3 game loop; shares Pong's paddle problem                                                                           |
 | Memory                                                                    | Rotate over cards, press to reveal          | v0.3 persistence for best times                                                                                        |

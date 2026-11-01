@@ -38,6 +38,7 @@ In launcher order:
 | Gallery | Pictures and GIFs friends send to this panel through its send link, newest first; rotate to browse. A new picture takes the panel unless a game or timer is running. |
 | Morse | Morse trainer in four modes — tap a dot, hold a dash, or read the code and pick the letter. Separate records for sending and reading. |
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
+| Life | Conway's Game of Life across the panel, cells coloured by age; rotate for speed, press for a new field, long press for another palette. Replaces a field that has settled by itself. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
 | Snake | Rotate to turn, press to start; keeps a persistent high score. |
 | Test Card | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |

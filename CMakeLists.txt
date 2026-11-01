@@ -145,6 +145,7 @@ add_library(matrixos_core STATIC
     src/apps/testpattern/test_pattern.cpp
     src/apps/weather/weather_app.cpp
     src/apps/gallery/gallery_app.cpp
+    src/apps/life/life.cpp
     src/apps/spotify/spotify_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC
@@ -265,6 +266,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_weather.cpp
         tests/test_gallery.cpp
         tests/test_spotify.cpp
+        tests/test_life.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

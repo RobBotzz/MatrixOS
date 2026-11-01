@@ -8,6 +8,7 @@
 
 #include "apps/clock/clock_app.h"
 #include "apps/gallery/gallery_app.h"
+#include "apps/life/life.h"
 #include "apps/morse/morse.h"
 #include "apps/plasma/plasma.h"
 #include "apps/pomodoro/pomodoro.h"
@@ -292,6 +293,7 @@ int main(int argc, char *argv[])
     shell.add(std::make_unique<matrixos::SpotifyApp>(spotify));
     shell.add(std::make_unique<matrixos::MorseApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::PlasmaApp>());
+    shell.add(std::make_unique<matrixos::LifeApp>(std::random_device{}()));
     shell.add(std::make_unique<matrixos::PomodoroApp>());
     shell.add(std::make_unique<matrixos::SnakeApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::TestPatternApp>());
