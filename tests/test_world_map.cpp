@@ -7,6 +7,7 @@
 #include "apps/worldmap/world_map_app.h"
 
 #include "fake_clock.h"
+#include "gfx/equal_earth.h"
 #include "gfx/surface.h"
 #include "gfx/world_map_data.h"
 #include "os/sun.h"
@@ -26,14 +27,16 @@ constexpr std::int64_t kJuneSolstice = 1782030240;     // 2026-06-21 08:24 UTC
 constexpr std::int64_t kDecemberSolstice = 1797886200; // 2026-12-21 20:50 UTC
 constexpr std::int64_t kEquinoxNoon = 1774008000;      // 2026-03-20 12:00 UTC
 
-int column(double longitude)
+struct Pixel
 {
-    return static_cast<int>((longitude + 180.0) / 5.625);
-}
+    int x;
+    int y;
+};
 
-int row(double latitude)
+Pixel at(double latitude, double longitude)
 {
-    return static_cast<int>((90.0 - latitude) / 5.625);
+    const PanelPoint point = equalEarthForward({latitude, longitude});
+    return {static_cast<int>(point.x), static_cast<int>(point.y)};
 }
 
 bool land(int x, int y)
@@ -70,11 +73,35 @@ TEST_CASE("the sun is overhead at the subsolar point and below the opposite one"
     CHECK(sunElevation(sun, 85.0, sun.longitude + 180.0) > 0.0); // midnight sun
 }
 
+TEST_CASE("Equal Earth fills the panel's width and comes back where it started")
+{
+    CHECK(equalEarthForward({0.0, -180.0}).x == Approx(0.0).margin(1e-9));
+    CHECK(equalEarthForward({0.0, 180.0}).x == Approx(64.0).margin(1e-9));
+    CHECK(equalEarthForward({0.0, 0.0}).y == Approx(16.0).margin(1e-9));
+    CHECK(equalEarthForward({90.0, 0.0}).y > 0.0); // the poles stay on the panel
+
+    for (const GeoPoint place :
+         {GeoPoint{48.2, 16.4}, GeoPoint{-33.9, 151.2}, GeoPoint{64.1, -21.9}})
+    {
+        const auto back = equalEarthInverse(equalEarthForward(place));
+        REQUIRE(back);
+        CHECK(back->latitude == Approx(place.latitude).margin(1e-6));
+        CHECK(back->longitude == Approx(place.longitude).margin(1e-6));
+    }
+}
+
+TEST_CASE("the poles are lines, not the whole width: the corners are off the map")
+{
+    CHECK_FALSE(equalEarthInverse({0.5, 31.5}));
+    CHECK_FALSE(equalEarthInverse({63.5, 0.5}));
+    CHECK(equalEarthInverse({32.0, 31.0}));
+}
+
 TEST_CASE("the mask has the Sahara and an empty Pacific")
 {
-    CHECK(land(column(10.0), row(23.0)));
-    CHECK_FALSE(land(column(-150.0), row(0.0)));
-    CHECK(land(column(0.0), row(-85.0))); // Antarctica
+    CHECK(land(at(23.0, 10.0).x, at(23.0, 10.0).y));
+    CHECK_FALSE(land(at(0.0, -150.0).x, at(0.0, -150.0).y));
+    CHECK(land(at(-80.0, 0.0).x, at(-80.0, 0.0).y)); // Antarctica
 }
 
 TEST_CASE("Europe lies in daylight while Australia sleeps, mid-afternoon in July")
@@ -85,8 +112,8 @@ TEST_CASE("Europe lies in daylight while Australia sleeps, mid-afternoon in July
     Surface frame(64, 32);
     app.render(frame);
 
-    const Color europe = frame.pixel(column(15.0), row(48.0));
-    const Color australia = frame.pixel(column(135.0), row(-25.0));
+    const Color europe = frame.pixel(at(48.0, 15.0).x, at(48.0, 15.0).y);
+    const Color australia = frame.pixel(at(-25.0, 135.0).x, at(-25.0, 135.0).y);
     CHECK(brightness(europe) > 3 * brightness(australia));
 }
 
@@ -96,8 +123,16 @@ TEST_CASE("rotating moves the time, press brings it back")
     WorldMapApp app(clock);
     app.onInput({InputType::Rotate, 3});
     CHECK(app.offsetHours() == 3);
-    app.onInput({InputType::Rotate, 1000});
-    CHECK(app.offsetHours() == WorldMapApp::kMaxOffsetHours);
+    app.onInput({InputType::Rotate, 21});
+    CHECK(app.offsetHours() == 0); // a full day on is now again
+    app.onInput({InputType::Rotate, 25});
+    CHECK(app.offsetHours() == 1);
+    app.onInput({InputType::Rotate, -25});
+    CHECK(app.offsetHours() == 0);
+    app.onInput({InputType::Rotate, -24});
+    CHECK(app.offsetHours() == 0);
+    app.onInput({InputType::Rotate, -23});
+    CHECK(app.offsetHours() == -23);
 
     // Twelve hours on, Australia is the bright one.
     app.onInput({InputType::Press, 0});
@@ -105,8 +140,8 @@ TEST_CASE("rotating moves the time, press brings it back")
     app.update(Duration{0.016F});
     Surface frame(64, 32);
     app.render(frame);
-    CHECK(brightness(frame.pixel(column(135.0), row(-25.0))) >
-          3 * brightness(frame.pixel(column(15.0), row(48.0))));
+    CHECK(brightness(frame.pixel(at(-25.0, 135.0).x, at(-25.0, 135.0).y)) >
+          3 * brightness(frame.pixel(at(48.0, 15.0).x, at(48.0, 15.0).y)));
 
     app.onInput({InputType::Press, 0});
     CHECK(app.offsetHours() == 0);

@@ -1005,11 +1005,16 @@ dozen cells for four seconds is replaced, and so is any field after 2000 generat
 
 **Day/night world map — built 2026-11-01**, as the app "World". The land mask is the compiled-in
 dataset this list foresaw: `tools/landmask_to_header.py` rasterises Natural Earth's 1:110m land
-(public domain) at 6x6 samples per pixel into 256 bytes in `gfx/world_map_data.h`. The sun's
+(public domain) at 6x6 samples per pixel into 256 bytes in `gfx/world_map_data.h`. The projection
+is **Equal Earth** (`gfx/equal_earth`), not equirectangular: on the first look at the panel
+Antarctica filled the whole bottom row, which is what a projection that gives every latitude the
+same height does to the poles. Equal Earth keeps areas true, is 2.05:1 and so fills the panel's
+width, and leaves the corners outside its rounded outline dark. The app looks up each pixel's
+latitude and longitude once, at start. The sun's
 position is NOAA's low-precision series, good to a fraction of a degree against a 5.6-degree
 pixel; daylight fades to night between +2 and -12 degrees of elevation, and a yellow pixel marks
 where the sun stands overhead. `TimeProvider` gained `unixTime()`, since the sun cares about UTC,
-not the zone. Rotate moves the time by an hour per detent, up to three days either way, with the
+not the zone. Rotate moves the time by an hour per detent, wrapping back to 0 at 24 hours either way, with the
 offset shown; press returns to now; without a synchronised clock it shows the bare map and
 `NO TIME`. The shading is recomputed once a minute of map time, not every frame.
 
@@ -1175,6 +1180,19 @@ recorded in the commercialisation notes. The flag quiz is the same app without t
 national flags are not protected this way — so the shell gets built either way and Pokémon stays
 here as a personal-build-only entry rather than moving to **Dropped**, because nothing about the
 panel rules it out.
+
+**Built 2026-11-01 — from an API, which changes the picture.** Nothing Pokémon is in the
+repository or the image: each unit fetches names and sprites at run time from
+[PokéAPI](https://pokeapi.co) (free, no key) and GitHub-hosted sprites. Decided with the
+maintainer: **fine for the maintainer's own unit and units given to friends, not for anything
+sold** — a sold unit would have to drop the app. First generation only (151), German names
+folded to the font (umlauts to AE/OE/UE, Nidoran's ♀/♂ to W/M). A worker prepares three rounds
+ahead while the quiz is on the panel and nothing while it is not; the sprite is cropped to its
+figure and fitted into 24x24 (stb_image now decodes PNG as well), drawn black on a yellow-to-blue
+backdrop and in colour once answered. Rotate picks one of four names, press answers, press again
+for the next; the best streak is kept in the state store. The quiz is not interruptible by
+arriving pictures. The flag quiz can reuse the round-and-reveal shape when it comes; the shell
+was not abstracted ahead of that second user.
 
 **The Instagram QR code only just fits, and only for short handles.** A version-1 QR is 21x21
 modules and needs a four-module quiet zone, so 29x29 pixels — three to spare in the panel's

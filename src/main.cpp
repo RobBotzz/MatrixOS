@@ -11,6 +11,7 @@
 #include "apps/life/life.h"
 #include "apps/morse/morse.h"
 #include "apps/plasma/plasma.h"
+#include "apps/pokemon/pokemon_app.h"
 #include "apps/pomodoro/pomodoro.h"
 #include "apps/settings/settings_app.h"
 #include "apps/setup/setup_app.h"
@@ -35,6 +36,7 @@
 #include "os/gallery.h"
 #include "os/identity.h"
 #include "os/log.h"
+#include "os/pokemon.h"
 #include "os/provisioning.h"
 #include "os/shell.h"
 #include "os/spotify.h"
@@ -285,6 +287,9 @@ int main(int argc, char *argv[])
     gallery.begin();
     spotify.begin();
 
+    matrixos::PokemonService pokemon(matrixos::httpsGet, std::random_device{}());
+    pokemon.begin();
+
     matrixos::SystemTimeProvider time;
 
     matrixos::Shell shell(*display, *input, store);
@@ -298,6 +303,7 @@ int main(int argc, char *argv[])
     shell.add(std::make_unique<matrixos::LifeApp>(std::random_device{}()));
     shell.add(std::make_unique<matrixos::PomodoroApp>());
     shell.add(std::make_unique<matrixos::SnakeApp>(store, std::random_device{}()));
+    shell.add(std::make_unique<matrixos::PokemonApp>(pokemon, store));
     shell.add(std::make_unique<matrixos::TestPatternApp>());
 
     const std::size_t setup_app =

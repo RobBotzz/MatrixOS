@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include "gfx/equal_earth.h"
 #include "gfx/surface.h"
 #include "os/app.h"
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 namespace matrixos
 {
@@ -18,11 +20,12 @@ namespace matrixos
 class TimeProvider;
 
 /// The world with day and night on it, the sun where it stands overhead. Rotate
-/// moves the time an hour per detent, press returns to now.
+/// moves the time an hour per detent, wrapping at a day, press returns to now.
 class WorldMapApp : public App
 {
 public:
-    static constexpr int kMaxOffsetHours = 72;
+    /// A full day brings the sun back where it was, so the offset wraps to 0.
+    static constexpr int kHoursPerDay = 24;
 
     explicit WorldMapApp(const TimeProvider &time);
 
@@ -42,6 +45,7 @@ private:
     bool known_ = false;
     std::optional<std::int64_t> shaded_for_;
     Surface map_;
+    std::vector<std::optional<GeoPoint>> places_; ///< per pixel; empty outside the outline
     int sun_x_ = -1;
     int sun_y_ = -1;
 };

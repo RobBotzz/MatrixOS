@@ -6,6 +6,7 @@
 
 #include "apps/worldmap/world_map_app.h"
 
+#include "gfx/equal_earth.h"
 #include "gfx/font.h"
 #include "gfx/world_map_data.h"
 #include "os/clock.h"
@@ -32,8 +33,6 @@ constexpr Color kNoTime{255, 150, 0};
 /// in between, twilight fades. -12 degrees is the end of nautical twilight.
 constexpr double kDayFrom = 2.0;
 constexpr double kNightFrom = -12.0;
-
-constexpr double kPixelDegrees = 360.0 / world::kMapWidth;
 
 /// The shading is redone when the time on the map has moved this far.
 constexpr std::int64_t kReshadeSeconds = 60;
@@ -69,13 +68,21 @@ void drawLabel(Surface &surface, int x, int y, const std::string &text, Color co
 WorldMapApp::WorldMapApp(const TimeProvider &time)
     : time_(time), map_(world::kMapWidth, world::kMapHeight)
 {
+    places_.reserve(static_cast<std::size_t>(world::kMapWidth * world::kMapHeight));
+    for (int y = 0; y < world::kMapHeight; ++y)
+    {
+        for (int x = 0; x < world::kMapWidth; ++x)
+        {
+            places_.push_back(equalEarthInverse({x + 0.5, y + 0.5}));
+        }
+    }
 }
 
 void WorldMapApp::onInput(const InputEvent &event)
 {
     if (event.type == InputType::Rotate)
     {
-        offset_hours_ = std::clamp(offset_hours_ + event.delta, -kMaxOffsetHours, kMaxOffsetHours);
+        offset_hours_ = (offset_hours_ + event.delta) % kHoursPerDay;
     }
     else if (event.type == InputType::Press)
     {
@@ -107,11 +114,15 @@ void WorldMapApp::shade(std::int64_t unix_seconds)
     const SunPosition sun = subsolarPoint(unix_seconds);
     for (int y = 0; y < world::kMapHeight; ++y)
     {
-        const double latitude = 90.0 - (y + 0.5) * kPixelDegrees;
         for (int x = 0; x < world::kMapWidth; ++x)
         {
-            const double longitude = -180.0 + (x + 0.5) * kPixelDegrees;
-            const double elevation = sunElevation(sun, latitude, longitude);
+            const auto &place = places_[static_cast<std::size_t>(y * world::kMapWidth + x)];
+            if (!place)
+            {
+                map_.setPixel(x, y, Color::black());
+                continue;
+            }
+            const double elevation = sunElevation(sun, place->latitude, place->longitude);
             const double light =
                 std::clamp((elevation - kNightFrom) / (kDayFrom - kNightFrom), 0.0, 1.0);
             map_.setPixel(x, y,
@@ -119,10 +130,9 @@ void WorldMapApp::shade(std::int64_t unix_seconds)
                                      : mix(kSeaNight, kSeaDay, light));
         }
     }
-    sun_x_ = std::clamp(static_cast<int>((sun.longitude + 180.0) / kPixelDegrees), 0,
-                        world::kMapWidth - 1);
-    sun_y_ = std::clamp(static_cast<int>((90.0 - sun.latitude) / kPixelDegrees), 0,
-                        world::kMapHeight - 1);
+    const PanelPoint overhead = equalEarthForward({sun.latitude, sun.longitude});
+    sun_x_ = std::clamp(static_cast<int>(overhead.x), 0, world::kMapWidth - 1);
+    sun_y_ = std::clamp(static_cast<int>(overhead.y), 0, world::kMapHeight - 1);
     shaded_for_ = unix_seconds;
 }
 
@@ -134,7 +144,10 @@ void WorldMapApp::render(Surface &surface)
         {
             for (int x = 0; x < world::kMapWidth; ++x)
             {
-                surface.setPixel(x, y, land(x, y) ? kLandNight : kSeaNight);
+                if (places_[static_cast<std::size_t>(y * world::kMapWidth + x)])
+                {
+                    surface.setPixel(x, y, land(x, y) ? kLandNight : kSeaNight);
+                }
             }
         }
         drawLabel(surface, 2, 1, "NO TIME", kNoTime);

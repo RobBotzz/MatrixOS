@@ -135,6 +135,8 @@ add_library(matrixos_core STATIC
     src/os/cover.cpp
     src/os/spotify.cpp
     src/os/sun.cpp
+    src/gfx/equal_earth.cpp
+    src/os/pokemon.cpp
     src/os/weather.cpp
     src/apps/clock/clock_app.cpp
     src/apps/morse/morse.cpp
@@ -148,6 +150,7 @@ add_library(matrixos_core STATIC
     src/apps/gallery/gallery_app.cpp
     src/apps/life/life.cpp
     src/apps/worldmap/world_map_app.cpp
+    src/apps/pokemon/pokemon_app.cpp
     src/apps/spotify/spotify_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC
@@ -270,6 +273,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_spotify.cpp
         tests/test_life.cpp
         tests/test_world_map.cpp
+        tests/test_pokemon.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core
