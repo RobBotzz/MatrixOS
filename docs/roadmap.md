@@ -31,6 +31,7 @@ capabilities; building the app is how that capability gets built and proven.
 | Image/GIF decoding & scaling to 64x32      | GIF & Text            | Dependency choice, quality at tiny resolution                                                 |
 | Upload handling & storage limits           | GIF & Text            | How many uploads, eviction policy                                                             |
 | OAuth token lifecycle, secret storage      | Spotify               | No browser on the device; static HTTPS redirect page                                          |
+| Audio output                               | Sound (v0.8)          | Onboard audio is taken by the panel (C-3); USB card, power noise from the panel, permissions  |
 
 ---
 
@@ -883,6 +884,52 @@ device's own configuration page starts the flow, a static HTTPS page redirects t
 authorization code back to the device on the LAN, and pasting the code by hand is the
 fallback that depends on nothing. Verify Q-10 first — if either service supports the device
 authorization grant, the static page is unnecessary.
+
+---
+
+## v0.8 — Sound
+
+**Unlocks:** audio output, which the device has never had.
+
+Added 2026-11-01. The on-board audio cannot be used: it shares the PWM hardware the panel needs,
+and is disabled for that reason (C-3). A **USB sound card** sidesteps the conflict entirely — it
+touches neither PWM nor GPIO, and the Zero's data port is free. The parts are a few euros: a
+CM108 stick with a jack, a micro-USB OTG adapter for the data port (not PWR), and either an
+active mini speaker or a passive one behind a PAM8403 amplifier module.
+
+- **A sound service** in the platform, following the time provider and the weather service: apps
+  never play anything themselves (FR-26), they ask for a named sound and a worker plays it, so the
+  render loop never waits. A silent implementation for the simulator and for units without a card
+  — a unit with nothing plugged in behaves exactly as it does today.
+- **Sounds made, not shipped**: short waveforms generated in code — chime, alarm, Morse tone — so
+  there are no audio files to license or store.
+- **Volume and mute** in Settings, kept in the state store: with a read-only root ALSA cannot
+  remember a level itself.
+- `provision.sh` gives the `daemon` user access to `/dev/snd`.
+- First users: **Pomodoro**'s alarm (the roadmap already notes that a silent alarm in an empty room
+  is no alarm), **Morse** tones while sending and reading, a chime when a **Gallery** picture
+  arrives, and **Snake**'s eat and game-over sounds.
+
+**To decide before the code, in an ADR:**
+
+- How to play: the `aplay` binary through the process runner, the way curl and nmcli run
+  (ADR-0013, ADR-0017) — nothing to cross-compile — or **tinyalsa**, a small dependency-free C
+  library, if `aplay`'s start-up latency turns out audible for game sounds.
+- Which app gets which sound, and whether anything sounds at night (quiet hours).
+
+**To check on the device first:**
+
+- **Hum from the panel.** It draws large current in fast pulses; an amplifier on the same 5 V
+  supply easily turns that into a whine. A USB-powered active speaker is less exposed than a
+  PAM8403 on the panel's rail.
+- **Flicker.** Whether USB audio traffic disturbs the refresh. Not expected — the refresh thread
+  has an isolated core (NFR-5) — but not measured.
+- **Permissions after the privilege drop.** Whether the matrix library keeps supplementary groups
+  when it drops to `daemon`, or `audio` membership is lost with it.
+
+**Done when** a unit with a USB card plays the Pomodoro alarm and Morse tones audibly and without
+hum, a unit without one behaves as before, volume and mute survive a reboot, and the panel shows
+no new flicker. Acceptance criteria get written into requirements.md before the code, as usual.
 
 ---
 
