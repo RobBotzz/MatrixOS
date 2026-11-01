@@ -68,6 +68,11 @@ message(STATUS "MatrixOS: version ............ ${MATRIXOS_VERSION} (${MATRIXOS_C
 add_library(matrixos_warnings INTERFACE)
 target_compile_options(matrixos_warnings INTERFACE -Wall -Wextra -Wpedantic)
 
+# JPEG decoding for album art (ADR-0019): the vendored stb_image, built apart
+# from our warning flags and included as a system header.
+add_library(matrixos_stb STATIC src/os/stb_image.cpp)
+target_include_directories(matrixos_stb SYSTEM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/stb)
+
 # =============================================================================
 # rpi-rgb-led-matrix (Pi builds only)
 # =============================================================================
@@ -125,6 +130,10 @@ add_library(matrixos_core STATIC
     src/os/process.cpp
     src/os/picture.cpp
     src/os/gallery.cpp
+    src/os/http_types.cpp
+    src/os/pkce.cpp
+    src/os/cover.cpp
+    src/os/spotify.cpp
     src/os/weather.cpp
     src/apps/clock/clock_app.cpp
     src/apps/morse/morse.cpp
@@ -136,6 +145,7 @@ add_library(matrixos_core STATIC
     src/apps/testpattern/test_pattern.cpp
     src/apps/weather/weather_app.cpp
     src/apps/gallery/gallery_app.cpp
+    src/apps/spotify/spotify_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -143,7 +153,7 @@ target_include_directories(matrixos_core PUBLIC
 )
 target_link_libraries(matrixos_core
     PUBLIC Threads::Threads   # the shell sleeps between frames
-    PRIVATE matrixos_warnings nlohmann_json::nlohmann_json
+    PRIVATE matrixos_warnings nlohmann_json::nlohmann_json matrixos_stb
 )
 
 # =============================================================================
@@ -186,6 +196,7 @@ add_library(matrixos_net STATIC
     src/net/http_server.cpp
     src/net/nmcli_wifi.cpp
     src/net/portal.cpp
+    src/net/spotify_routes.cpp
     src/net/weather_routes.cpp
 )
 target_link_libraries(matrixos_net
@@ -253,6 +264,7 @@ if(MATRIXOS_BUILD_TESTS)
         tests/test_setup_app.cpp
         tests/test_weather.cpp
         tests/test_gallery.cpp
+        tests/test_spotify.cpp
     )
     target_link_libraries(matrixos_tests PRIVATE
         matrixos_core

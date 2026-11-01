@@ -23,11 +23,20 @@ extern char **environ;
 namespace matrixos
 {
 
-int runCommand(const std::vector<std::string> &args, std::string *output, int timeout_ms)
+int runCommand(const std::vector<std::string> &args, std::string *output, int timeout_ms,
+               const std::string *input)
 {
     int fds[2] = {-1, -1};
     if (::pipe(fds) != 0)
     {
+        return -1;
+    }
+
+    int in[2] = {-1, -1};
+    if (input != nullptr && ::pipe(in) != 0)
+    {
+        ::close(fds[0]);
+        ::close(fds[1]);
         return -1;
     }
 
@@ -36,6 +45,12 @@ int runCommand(const std::vector<std::string> &args, std::string *output, int ti
     posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
     posix_spawn_file_actions_addclose(&actions, fds[0]);
     posix_spawn_file_actions_addclose(&actions, fds[1]);
+    if (input != nullptr)
+    {
+        posix_spawn_file_actions_adddup2(&actions, in[0], STDIN_FILENO);
+        posix_spawn_file_actions_addclose(&actions, in[0]);
+        posix_spawn_file_actions_addclose(&actions, in[1]);
+    }
 
     std::vector<char *> argv;
     argv.reserve(args.size() + 1);
@@ -49,12 +64,41 @@ int runCommand(const std::vector<std::string> &args, std::string *output, int ti
     const int spawned = ::posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
     posix_spawn_file_actions_destroy(&actions);
     ::close(fds[1]);
+    if (input != nullptr)
+    {
+        ::close(in[0]);
+    }
 
     if (spawned != 0)
     {
         ::close(fds[0]);
+        if (input != nullptr)
+        {
+            ::close(in[1]);
+        }
         logWarn("process: cannot run '{}': {}", args[0], std::strerror(spawned));
         return -1;
+    }
+
+    // Small enough to fit the pipe buffer, so this cannot block on a child that
+    // has not started reading yet. SIGPIPE is ignored process-wide (main.cpp).
+    if (input != nullptr)
+    {
+        std::size_t written = 0;
+        while (written < input->size())
+        {
+            const ssize_t count = ::write(in[1], input->data() + written, input->size() - written);
+            if (count < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            if (count <= 0)
+            {
+                break;
+            }
+            written += static_cast<std::size_t>(count);
+        }
+        ::close(in[1]);
     }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);

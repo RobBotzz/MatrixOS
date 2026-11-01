@@ -14,11 +14,14 @@ namespace matrixos
 
 /// Runs a command with an explicit argument vector — no shell, so nothing in an
 /// argument can be interpreted (ADR-0013, ADR-0017). Blocks for up to
-/// `timeout_ms`; never call it from the render thread.
+/// `timeout_ms`; never call it from the render thread. `input`, if given, is the
+/// child's standard input — the way to hand it secrets that must not appear in
+/// a process list (FR-24). It must stay below the pipe buffer, 64 KB.
 ///
 /// Returns the exit status, or -1 if the child could not be started or had to be
 /// killed on the timeout. The child is always reaped: a device that runs for
 /// months must not accumulate a zombie per request.
-int runCommand(const std::vector<std::string> &args, std::string *output, int timeout_ms);
+int runCommand(const std::vector<std::string> &args, std::string *output, int timeout_ms,
+               const std::string *input = nullptr);
 
 } // namespace matrixos

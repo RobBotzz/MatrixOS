@@ -26,6 +26,7 @@ decision consciously left open is visibly different from one that was never cons
 | [0016](0016-maintainer-access-to-shipped-units.md) | Maintainer access to shipped units — SSH by key only, cloud-init off | Accepted |
 | [0017](0017-http-through-the-curl-binary.md) | HTTP through the `curl` binary, in-process | Accepted |
 | [0018](0018-pictures-through-ntfy.md) | Pictures between people, through ntfy.sh | Accepted |
+| [0019](0019-spotify-with-the-owners-own-app.md) | Spotify through the owner's own Spotify app | Accepted |
 
 ## Conventions
 

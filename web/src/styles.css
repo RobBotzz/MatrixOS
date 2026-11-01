@@ -528,3 +528,34 @@ button:hover:not(:disabled) {
     width: 100%;
     margin: 0 0 12px;
 }
+
+.steps {
+    margin: 0 0 14px;
+    padding-left: 20px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.steps li {
+    margin-bottom: 10px;
+}
+
+.steps strong {
+    color: inherit;
+    font-weight: 600;
+}
+
+.steps input {
+    margin-top: 6px;
+}
+
+.paste {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.paste summary {
+    cursor: pointer;
+    margin-bottom: 8px;
+}

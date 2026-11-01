@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/// The page is served over plain HTTP, where the Clipboard API is not available;
-/// selecting the field and the old copy command work everywhere.
-function copyFrom(input) {
-    input.select();
-    input.setSelectionRange(0, input.value.length);
-    return document.execCommand("copy");
-}
+import { copyFrom } from "./copy.js";
 
 export default function PicturesCard() {
     const [gallery, setGallery] = useState(null);

@@ -14,6 +14,7 @@
 #include "apps/settings/settings_app.h"
 #include "apps/setup/setup_app.h"
 #include "apps/snake/snake.h"
+#include "apps/spotify/spotify_app.h"
 #include "apps/testpattern/test_pattern.h"
 #include "apps/weather/weather_app.h"
 #include "gfx/surface.h"
@@ -26,6 +27,7 @@
 #include "net/http_server.h"
 #include "net/nmcli_wifi.h"
 #include "net/portal.h"
+#include "net/spotify_routes.h"
 #include "net/weather_routes.h"
 #include "os/clock.h"
 #include "os/gallery.h"
@@ -33,6 +35,7 @@
 #include "os/log.h"
 #include "os/provisioning.h"
 #include "os/shell.h"
+#include "os/spotify.h"
 #include "os/state.h"
 #include "os/version.h"
 #include "os/weather.h"
@@ -218,6 +221,8 @@ int main(int argc, char *argv[])
 
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
+    // A child that exits before reading its input must not take MatrixOS with it.
+    std::signal(SIGPIPE, SIG_IGN);
 
     if (test_pattern)
     {
@@ -260,13 +265,23 @@ int main(int argc, char *argv[])
 
     matrixos::GalleryService gallery(store, stateRoot() / "gallery", matrixos::httpsGet);
     matrixos::installGalleryRoutes(server, gallery);
-    provisioning.onReset([&gallery] { gallery.reset(); });
+
+    matrixos::SpotifyService spotify(store, matrixos::httpsCall, matrixos::httpsGet);
+    matrixos::installSpotifyRoutes(server, spotify);
+
+    provisioning.onReset(
+        [&gallery, &spotify]
+        {
+            gallery.reset();
+            spotify.reset();
+        });
 
     server.start();
 
     provisioning.begin();
     weather.begin();
     gallery.begin();
+    spotify.begin();
 
     matrixos::SystemTimeProvider time;
 
@@ -274,6 +289,7 @@ int main(int argc, char *argv[])
     shell.add(std::make_unique<matrixos::ClockApp>(time));
     shell.add(std::make_unique<matrixos::WeatherApp>(weather));
     const std::size_t gallery_app = shell.add(std::make_unique<matrixos::GalleryApp>(gallery));
+    shell.add(std::make_unique<matrixos::SpotifyApp>(spotify));
     shell.add(std::make_unique<matrixos::MorseApp>(store, std::random_device{}()));
     shell.add(std::make_unique<matrixos::PlasmaApp>());
     shell.add(std::make_unique<matrixos::PomodoroApp>());

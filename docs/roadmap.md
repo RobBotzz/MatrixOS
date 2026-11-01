@@ -883,7 +883,44 @@ downscaler this milestone builds, so the dependency now points backwards instead
 - **Strava** — friends' statistics, rotate to change view.
 - Token storage and refresh without re-deploying (FR-29), secrets hygiene (FR-24).
 
-Spotify's album art reuses the 64x32 downscaler from v0.6.
+### Discussed before the code — 2026-11-01
+
+Spotify's terms changed under this plan. Since February 2026 a Development Mode app needs an
+owner with Premium and admits five users; Extended Quota is for businesses with 250,000 monthly
+users. Strava's API agreement, since late 2024, allows showing an athlete's data to that athlete
+only. Decided with the maintainer:
+
+- **Spotify first, through each owner's own Spotify app** — Client ID on the configuration page,
+  PKCE, so no secret and nobody on the maintainer's quota. Proposed in
+  [ADR-0019](adr/0019-spotify-with-the-owners-own-app.md), criteria in
+  [requirements.md §5.6](requirements.md#56-v07--spotify).
+- **Strava later, own statistics only.**
+- Album art is decoded on the unit (stb_image), not by v0.6's browser-side converter: no browser
+  is involved while music plays.
+- No switching to the app when music starts, and a long press goes back a track.
+
+### Built — 2026-11-01
+
+- `os/pkce` — SHA-256 (checked against the FIPS vectors), base64url, the S256 challenge (checked
+  against RFC 7636's example).
+- `os/http_types` + `net/http_get::httpsCall` — any method, headers and body, all handed to curl
+  as `--config -` on standard input, so a token never appears in a process's arguments;
+  `runCommand` can now feed a child's stdin. SIGPIPE is ignored process-wide for it.
+- `os/spotify` — `SpotifyService`: the pending link with verifier, nonce and origin; the code
+  exchange and token refresh, with a retry after a 401; `GET /me/player` every 5 seconds only while
+  the app is on screen; commands; a revoked link shown as "sign in again". Client ID and refresh
+  token in `spotify.conf`; a factory reset forgets both.
+- `os/cover` + `external/stb/stb_image.h` (v2.30, commit in `external/stb/COMMIT`) — the 64-px
+  album JPEG centre-cropped and averaged to 32x32, built in its own target without our warnings.
+- `apps/spotify` — cover, scrolling title and artist, play state, a progress bar that runs on
+  between polls, the volume shown while the knob turns and sent once it rests.
+- `net/spotify_routes` and the configuration page's Spotify card with the step-by-step setup;
+  `web/public/callback/` — the static callback page, published with the sending page.
+- 17 tests. Checked against the real Spotify API: a request through stdin arrives and a bad token
+  comes back as a clean 401; the callback page's origin check forwards local addresses only.
+
+**Still to do for v0.7:** create a Spotify app, link it from the configuration page, and walk
+through the criteria on the device.
 
 The OAuth mechanics are described in [ADR-0007](adr/0007-appliance-provisioning.md): the
 device's own configuration page starts the flow, a static HTTPS page redirects the

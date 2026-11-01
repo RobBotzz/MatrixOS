@@ -404,6 +404,32 @@ v0.6 is done when all of the following hold:
 10. **CI is green for host and aarch64**, and the suite covers the format, validation, eviction
    and the polling cursor.
 
+### 5.6 v0.7 — Spotify
+
+Written 2026-11-01, before the code. The first app with an account
+([ADR-0019](adr/0019-spotify-with-the-owners-own-app.md)); Strava follows later.
+
+v0.7 is done when all of the following hold:
+
+1. **An owner connects their own Spotify app from the configuration page**, following the steps
+   it shows — Client ID pasted, *Connect*, back on the configuration page — without a terminal and
+   without a client secret.
+2. **The panel shows what is playing**: cover, title, artist and progress, updated within a few
+   seconds of a change while the app is on screen.
+3. **Press pauses and resumes, double-press skips forward, a long press goes back a track, rotating
+   changes the volume** on the account's active Spotify device.
+4. **Nothing is lost on a restart**: the connection survives a reboot without signing in again,
+   because the refresh token is kept.
+5. **Every state is visible on the panel**: not connected, nothing playing, Spotify unreachable —
+   never a blank panel, never an error code.
+6. **Secrets stay secret** (FR-24): the refresh token is in the state store only, mode 0600, never
+   in a log line, never in a process's arguments.
+7. **A factory reset forgets the connection** (FR-42).
+8. **The unit asks Spotify nothing while the app is not on the panel.**
+9. **CI is green for host and aarch64**, and the suite covers the PKCE values, the token
+   exchange and refresh, parsing the player state, and the origin carried through `state`. The
+   callback page refuses to forward anywhere but a `.local` name or a private address.
+
 ## 6. Known open questions
 
 | ID  | Question                                                                                                                                                                       | Needed by          |
@@ -417,7 +443,7 @@ v0.6 is done when all of the following hold:
 | Q-7 | ~~In what format is app state stored?~~ **Answered — one `key=value` file per namespace, see [ADR-0011](adr/0011-state-store-format.md).** The location was never open (FR-39).                                                      | v0.3               |
 | Q-8 | ~~Two-tier hold or a dedicated home button?~~ **Answered — see Resolved below.** | — |
 | Q-9 | ~~What exactly does the panel show during setup, and is a WiFi-join QR code legible at 64x32?~~ **Answered — see Resolved below.** | v0.4 |
-| Q-10 | Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)? If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.7 |
+| Q-10 | ~~Do Spotify or Strava support the OAuth device authorization grant (RFC 8628)?~~ **Answered for Spotify, 2026-11-01 — no; see [ADR-0019](adr/0019-spotify-with-the-owners-own-app.md).** If either does, the static redirect page in [ADR-0007](adr/0007-appliance-provisioning.md) becomes unnecessary for it. | v0.7 |
 
 ### Resolved
 
