@@ -559,3 +559,9 @@ detection delays *every* press by that window — roughly 300 ms. No app needs t
 (Spotify in v0.7 is the first), so the default keeps a press instant. The detection is
 implemented and tested; only the default window of zero switches it off. The keyboard backend
 still emits it on a separate key for testing.
+
+**Since v0.7 the window is per app** (2026-11-01). An app that uses the gesture says so
+(`App::wantsDoublePress`), and the shell switches the encoder's window to 300 ms while that app
+is active and back to zero when it leaves. Spotify is the only one; every other app keeps an
+instant press. Found on the device: before this, Spotify's double-press arrived as two presses
+— pause, then play.

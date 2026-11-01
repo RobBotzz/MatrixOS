@@ -352,6 +352,7 @@ void Shell::setActive(App *app)
     deactivate();
 
     active_ = app;
+    input_.setDoublePress(active_ != nullptr && active_->wantsDoublePress());
     if (active_ == nullptr)
     {
         return;

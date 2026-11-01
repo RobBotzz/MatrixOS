@@ -74,6 +74,9 @@ class ScriptedInput : public Input
 public:
     void queue(std::vector<InputEvent> batch) { batches_.push_back(std::move(batch)); }
 
+    void setDoublePress(bool enabled) override { double_press = enabled; }
+    bool double_press = false;
+
     std::vector<InputEvent> poll() override
     {
         if (batches_.empty())
@@ -781,4 +784,42 @@ TEST_CASE("a game keeps the panel when a picture arrives")
 
     CHECK(last == "Game");
     CHECK(gallery.entered == 0);
+}
+
+namespace
+{
+
+class TwoClickApp : public SpyApp
+{
+public:
+    using SpyApp::SpyApp;
+    bool wantsDoublePress() const override { return true; }
+};
+
+} // namespace
+
+TEST_CASE("double-press recognition is on only while an app that wants it is active")
+{
+    RecordingDisplay display;
+    ScriptedInput input;
+    Calls plain;
+    Calls clicks;
+    StateStore store = StateStore::inMemory();
+    Shell shell = makeShell(display, input, store);
+
+    shell.add(std::make_unique<TwoClickApp>(clicks, "Clicks"));
+    shell.add(std::make_unique<SpyApp>(plain, "Plain"));
+
+    std::vector<bool> enabled;
+    input.queue({});
+    input.queue({{InputType::Home, 0}});
+    shell.run(
+        [&]
+        {
+            enabled.push_back(input.double_press);
+            return shell.frameCount() >= 4;
+        });
+
+    CHECK(enabled[1]);           // the startup app wants it
+    CHECK_FALSE(enabled.back()); // the launcher does not
 }

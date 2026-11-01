@@ -919,8 +919,12 @@ only. Decided with the maintainer:
 - 17 tests. Checked against the real Spotify API: a request through stdin arrives and a bad token
   comes back as a clean 401; the callback page's origin check forwards local addresses only.
 
-**Still to do for v0.7:** create a Spotify app, link it from the configuration page, and walk
-through the criteria on the device.
+**Double-press, found on the device.** The encoder never produced `DoublePress` — the window was
+zero for every app, by design, so presses stay instant — and Spotify's double-press arrived as
+pause-then-play. Apps now ask for the gesture (`App::wantsDoublePress`); the shell turns the 300 ms
+window on while such an app is active. See the note on `DoublePress` in requirements.md.
+
+**Still to do for v0.7:** walk through the criteria on the device.
 
 The OAuth mechanics are described in [ADR-0007](adr/0007-appliance-provisioning.md): the
 device's own configuration page starts the flow, a static HTTPS page redirects the

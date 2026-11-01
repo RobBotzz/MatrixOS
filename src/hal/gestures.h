@@ -47,6 +47,14 @@ public:
     GestureRecognizer();
     explicit GestureRecognizer(Timing timing);
 
+    /// What an app gets when it asks for `DoublePress` (App::wantsDoublePress).
+    static constexpr std::chrono::milliseconds kDoublePressWindow{300};
+
+    void setDoublePressWindow(std::chrono::milliseconds window)
+    {
+        timing_.double_press_window = window;
+    }
+
     std::vector<InputEvent> onButtonChange(bool pressed, InputTime when);
 
     /// Must be called every frame: a hold fires without any further edge, and a

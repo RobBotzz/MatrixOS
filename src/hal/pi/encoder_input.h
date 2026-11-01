@@ -50,6 +50,12 @@ public:
 
     std::vector<InputEvent> poll() override;
 
+    void setDoublePress(bool enabled) override
+    {
+        button_.setDoublePressWindow(enabled ? GestureRecognizer::kDoublePressWindow
+                                             : std::chrono::milliseconds::zero());
+    }
+
 private:
     EncoderInput(int requestFd, const Pins &pins, bool aHigh, bool bHigh);
 

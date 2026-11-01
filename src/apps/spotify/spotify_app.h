@@ -20,6 +20,7 @@ public:
     explicit SpotifyApp(SpotifyService &spotify);
 
     std::string_view name() const override { return "Spotify"; }
+    bool wantsDoublePress() const override { return true; }
 
     void onEnter() override;
     void onExit() override;

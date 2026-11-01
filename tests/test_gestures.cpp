@@ -211,3 +211,24 @@ TEST_CASE("with a window configured, a lone press arrives once the window expire
     clock.advance(1ms);
     CHECK(typesOf(recognizer.tick(clock.now())) == std::vector{InputType::Press});
 }
+
+TEST_CASE("the double-press window can be switched on and off at run time")
+{
+    GestureRecognizer recognizer;
+    const InputTime start{};
+    const auto at = [start](int ms) { return start + std::chrono::milliseconds(ms); };
+
+    recognizer.setDoublePressWindow(GestureRecognizer::kDoublePressWindow);
+    CHECK(recognizer.onButtonChange(true, at(0)).empty());
+    CHECK(recognizer.onButtonChange(false, at(80)).empty());
+    const auto second = recognizer.onButtonChange(true, at(200));
+    REQUIRE(second.size() == 1);
+    CHECK(second[0].type == InputType::DoublePress);
+    CHECK(recognizer.onButtonChange(false, at(280)).empty());
+
+    recognizer.setDoublePressWindow(std::chrono::milliseconds::zero());
+    CHECK(recognizer.onButtonChange(true, at(1000)).empty());
+    const auto single = recognizer.onButtonChange(false, at(1080));
+    REQUIRE(single.size() == 1);
+    CHECK(single[0].type == InputType::Press);
+}

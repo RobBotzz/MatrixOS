@@ -42,6 +42,10 @@ public:
     /// games and timers (ADR-0018).
     virtual bool interruptible() const { return true; }
 
+    /// True if the app uses `DoublePress`. Its presses then arrive about 300 ms
+    /// late, which is why nobody gets it by default.
+    virtual bool wantsDoublePress() const { return false; }
+
     /// Becoming the active app.
     virtual void onEnter() {}
 

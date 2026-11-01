@@ -63,6 +63,10 @@ public:
 
     /// Non-blocking: returns everything that happened since the last call.
     virtual std::vector<InputEvent> poll() = 0;
+
+    /// Recognising `DoublePress` delays every `Press` by the double-press window,
+    /// so it is on only while an app that wants it is on the panel.
+    virtual void setDoublePress(bool enabled) { (void) enabled; }
 };
 
 } // namespace matrixos
