@@ -42,7 +42,7 @@ constexpr int kSprite = PokemonService::kSprite;
 constexpr int kSpriteLeft = 4;
 constexpr int kSpriteTop = 0;
 constexpr int kBandTop = 25;
-constexpr int kQuestionLeft = 35;
+constexpr int kQuestionLeft = 43;
 constexpr int kQuestionTop = 3;
 constexpr int kQuestionScale = 3;
 constexpr int kDotsX = 60;
@@ -52,7 +52,8 @@ constexpr std::size_t kRays = 48;
 constexpr int kReachMin = 18;
 constexpr int kReachSpread = 11;
 constexpr float kRaysPerSecond = 1.5F;
-constexpr double kPullRight = 6.0; ///< the burst sits left, the red owns the right
+constexpr double kPullRight = 6.0;  ///< the burst sits left, the red owns the right
+constexpr double kBurstShift = 4.0; ///< offsets the pull, so the silhouette sits in the middle
 
 constexpr float kFlashSeconds = 0.15F;
 constexpr float kPollInterval = 0.25F;
@@ -91,7 +92,7 @@ PokemonApp::PokemonApp(PokemonService &pokemon, StateStore &store)
     // Double, not float: atan2f carries a symbol version newer than the device's
     // glibc, and the binary would not load at all.
     constexpr double kTurn = 6.283185307179586;
-    const double cx = kSpriteLeft + kSprite / 2.0;
+    const double cx = kSpriteLeft + kSprite / 2.0 + kBurstShift;
     const double cy = kSpriteTop + kSprite / 2.0;
     for (int y = 0; y < kPanelHeight; ++y)
     {
@@ -323,8 +324,10 @@ void PokemonApp::renderRound(Surface &surface) const
         }
     }
 
+    drawOutlined(surface, kQuestionLeft, kQuestionTop, "?", kQuestionScale);
+
     const std::string score = std::to_string(score_);
-    drawOutlined(surface, rightAlignedTextX(kPanelWidth - 2, score), 1, score);
+    drawOutlined(surface, rightAlignedTextX(kPanelWidth - 3, score), 2, score);
 
     for (int y = kBandTop; y < kPanelHeight; ++y)
     {
@@ -342,7 +345,6 @@ void PokemonApp::renderRound(Surface &surface) const
         return;
     }
 
-    drawOutlined(surface, kQuestionLeft, kQuestionTop, "?", kQuestionScale);
     drawTextCentered(surface, kBandTop, round_->options[static_cast<std::size_t>(selected_)],
                      kText);
     for (int i = 0; i < 4; ++i)
@@ -358,7 +360,7 @@ void PokemonApp::renderRound(Surface &surface) const
 
 void PokemonApp::renderScores(Surface &surface) const
 {
-    drawTextCentered(surface, 0, "HIGHSCORE", kYellow);
+    drawTextCentered(surface, 1, "HIGHSCORE", kYellow);
 
     const auto &entries = scoreboard_.entries();
     if (entries.empty())
