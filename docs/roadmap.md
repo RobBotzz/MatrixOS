@@ -1186,13 +1186,19 @@ repository or the image: each unit fetches names and sprites at run time from
 [PokéAPI](https://pokeapi.co) (free, no key) and GitHub-hosted sprites. Decided with the
 maintainer: **fine for the maintainer's own unit and units given to friends, not for anything
 sold** — a sold unit would have to drop the app. First generation only (151), German names
-folded to the font (umlauts to AE/OE/UE, Nidoran's ♀/♂ to W/M). A worker prepares three rounds
-ahead while the quiz is on the panel and nothing while it is not; the sprite is cropped to its
-figure and fitted into 24x24 (stb_image now decodes PNG as well), drawn black on a yellow-to-blue
-backdrop and in colour once answered. Rotate picks one of four names, press answers, press again
-for the next; the best streak is kept in the state store. The quiz is not interruptible by
-arriving pictures. The flag quiz can reuse the round-and-reveal shape when it comes; the shell
-was not abstracted ahead of that second user.
+folded to the font (umlauts to AE/OE/UE, Nidoran's ♀/♂ to W/M). A worker prepares three Pokémon
+ahead while the app is on the panel and nothing while it is not; the sprite is cropped to its
+figure and fitted into 24x24 (stb_image now decodes PNG as well).
+
+**Reshaped the same day after a first look: a show, not a game.** The maintainer wanted the
+look of the series more than a score, and on 64x32 the two do not fit together — four names and
+a streak leave no room for the picture. Now: a black silhouette on red and blue rays that turn
+slowly around it, a big yellow question mark with a dark outline; after ten seconds or a press,
+a white flash and the Pokémon in colour with its name in yellow on a dark band; after eight more
+seconds or a press, the next one. Rotate skips. No score and no answers, so a round needs one
+species request instead of four, and the app is interruptible like any other: an arriving
+picture may take the panel. The round-and-reveal shape the flag quiz could have reused is gone
+with it; the flag quiz will build its own when it comes.
 
 **The Instagram QR code only just fits, and only for short handles.** A version-1 QR is 21x21
 modules and needs a four-module quiet zone, so 29x29 pixels — three to spare in the panel's

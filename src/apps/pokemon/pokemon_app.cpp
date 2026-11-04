@@ -8,48 +8,54 @@
 
 #include "gfx/font.h"
 #include "gfx/surface.h"
-#include "os/state.h"
 
-#include <algorithm>
-#include <string>
+#include <cmath>
 
 namespace matrixos
 {
 namespace
 {
 
-constexpr std::string_view kSection = "pokemon";
-constexpr std::string_view kBestKey = "best";
-
-constexpr Color kBackdropTop{255, 210, 40};
-constexpr Color kBackdropBottom{40, 120, 255};
+constexpr Color kRayRed{200, 30, 40};
+constexpr Color kRayBlue{30, 70, 200};
 constexpr Color kSilhouette{0, 0, 0};
-constexpr Color kName{255, 255, 255};
-constexpr Color kRight{40, 230, 90};
-constexpr Color kWrong{255, 60, 60};
+constexpr Color kYellow{255, 215, 0};
+constexpr Color kOutline{20, 30, 110};
+constexpr Color kFlash{255, 255, 255};
 constexpr Color kDim{70, 78, 96};
-constexpr Color kTitle{255, 210, 40};
 
 constexpr int kSprite = PokemonService::kSprite;
-constexpr int kSpriteLeft = (64 - kSprite) / 2;
-constexpr int kBackdropMargin = 2;
-constexpr int kNameTop = 25;
+constexpr int kSpriteLeft = 4;
+constexpr int kSpriteTop = 1;
+constexpr int kRays = 16;
+constexpr float kSpinRadiansPerSecond = 0.25F;
+constexpr float kFlashSeconds = 0.15F;
 constexpr float kPollInterval = 0.25F;
+constexpr int kQuestionScale = 3;
+constexpr int kBandTop = 25;
 
-Color blend(Color a, Color b, int step, int steps)
+constexpr float kPi = 3.14159265F;
+
+/// Text with a one-pixel outline, which is how the show's lettering reads on
+/// a busy background.
+void drawOutlined(Surface &surface, int x, int y, std::string_view text, int scale)
 {
-    const auto channel = [step, steps](std::uint8_t from, std::uint8_t to)
-    { return static_cast<std::uint8_t>(from + (to - from) * step / steps); };
-    return {channel(a.r, b.r), channel(a.g, b.g), channel(a.b, b.b)};
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            if (dx != 0 || dy != 0)
+            {
+                drawText(surface, x + dx, y + dy, text, kOutline, scale);
+            }
+        }
+    }
+    drawText(surface, x, y, text, kYellow, scale);
 }
 
 } // namespace
 
-PokemonApp::PokemonApp(PokemonService &pokemon, StateStore &store)
-    : pokemon_(pokemon), saved_(store.section(kSection))
-{
-    best_ = saved_.getInt(kBestKey, 0);
-}
+PokemonApp::PokemonApp(PokemonService &pokemon) : pokemon_(pokemon) {}
 
 void PokemonApp::onEnter()
 {
@@ -67,57 +73,56 @@ void PokemonApp::onExit()
 
 void PokemonApp::next()
 {
-    round_ = pokemon_.take();
-    selected_ = 0;
-    revealed_ = false;
+    std::optional<PokemonRound> round = pokemon_.take();
+    if (round || !round_)
+    {
+        round_ = std::move(round);
+        revealed_ = false;
+    }
+    phase_ = 0.0F;
+}
+
+void PokemonApp::reveal()
+{
+    revealed_ = true;
+    phase_ = 0.0F;
 }
 
 void PokemonApp::onInput(const InputEvent &event)
 {
-    if (!round_)
+    if (event.type == InputType::Press && round_ && !revealed_)
     {
-        return;
+        reveal();
     }
-
-    if (event.type == InputType::Rotate && !revealed_)
+    else if (event.type == InputType::Press || event.type == InputType::Rotate)
     {
-        selected_ = ((selected_ + event.delta) % 4 + 4) % 4;
-    }
-    else if (event.type == InputType::Press)
-    {
-        if (revealed_)
-        {
-            next();
-            return;
-        }
-        revealed_ = true;
-        if (selected_ == round_->answer)
-        {
-            ++streak_;
-            if (streak_ > best_)
-            {
-                best_ = streak_;
-                saved_.setInt(kBestKey, best_);
-                saved_.save();
-            }
-        }
-        else
-        {
-            streak_ = 0;
-        }
+        next();
     }
 }
 
 void PokemonApp::update(Duration dt)
 {
-    if (round_)
+    const float seconds = dt.count();
+    spin_ += seconds;
+
+    if (!round_)
     {
+        since_poll_ += seconds;
+        if (since_poll_ >= kPollInterval)
+        {
+            since_poll_ = 0.0F;
+            next();
+        }
         return;
     }
-    since_poll_ += dt.count();
-    if (since_poll_ >= kPollInterval)
+
+    phase_ += seconds;
+    if (!revealed_ && phase_ >= kGuessSeconds)
     {
-        since_poll_ = 0.0F;
+        reveal();
+    }
+    else if (revealed_ && phase_ >= kRevealSeconds)
+    {
         next();
     }
 }
@@ -126,19 +131,23 @@ void PokemonApp::render(Surface &surface)
 {
     if (!round_)
     {
-        drawTextCentered(surface, 7, "POKEMON", kTitle);
+        drawTextCentered(surface, 7, "POKEMON", kYellow);
         drawTextCentered(surface, 18, pokemon_.offline() ? "OFFLINE" : "LOADING", kDim);
         return;
     }
 
-    const int left = kSpriteLeft - kBackdropMargin;
-    const int width = kSprite + 2 * kBackdropMargin;
-    for (int y = 0; y < kSprite; ++y)
+    // Rays turning around the middle of the silhouette.
+    const float cx = kSpriteLeft + kSprite / 2.0F;
+    const float cy = kSpriteTop + kSprite / 2.0F;
+    const bool flash = revealed_ && phase_ < kFlashSeconds;
+    for (int y = 0; y < surface.height(); ++y)
     {
-        const Color row = blend(kBackdropTop, kBackdropBottom, y, kSprite - 1);
-        for (int x = 0; x < width; ++x)
+        for (int x = 0; x < surface.width(); ++x)
         {
-            surface.setPixel(left + x, y, row);
+            const float angle =
+                std::atan2(y + 0.5F - cy, x + 0.5F - cx) + spin_ * kSpinRadiansPerSecond;
+            const int ray = static_cast<int>(std::floor(angle / (2.0F * kPi) * kRays));
+            surface.setPixel(x, y, flash ? kFlash : ((ray % 2 + 2) % 2 == 0 ? kRayRed : kRayBlue));
         }
     }
 
@@ -152,29 +161,27 @@ void PokemonApp::render(Surface &surface)
             {
                 continue;
             }
-            surface.setPixel(kSpriteLeft + x, y,
+            surface.setPixel(kSpriteLeft + x, kSpriteTop + y,
                              revealed_ ? Color{sprite[at], sprite[at + 1], sprite[at + 2]}
                                        : kSilhouette);
         }
     }
 
-    drawText(surface, 1, 1, std::to_string(streak_), kName);
-
-    if (revealed_)
+    if (!revealed_)
     {
-        const bool right = selected_ == round_->answer;
-        drawTextCentered(surface, kNameTop,
-                         round_->options[static_cast<std::size_t>(round_->answer)],
-                         right ? kRight : kWrong);
+        const int width = textWidth("?", kQuestionScale);
+        drawOutlined(surface, 46 - width / 2, 5, "?", kQuestionScale);
         return;
     }
 
-    drawTextCentered(surface, kNameTop, round_->options[static_cast<std::size_t>(selected_)],
-                     kName);
-    for (int i = 0; i < 4; ++i)
+    for (int y = kBandTop; y < surface.height(); ++y)
     {
-        surface.setPixel(56 + i * 2, 1, i == selected_ ? kName : kDim);
+        for (int x = 0; x < surface.width(); ++x)
+        {
+            surface.setPixel(x, y, kSilhouette);
+        }
     }
+    drawText(surface, centredTextX(surface.width(), round_->name), kBandTop, round_->name, kYellow);
 }
 
 } // namespace matrixos

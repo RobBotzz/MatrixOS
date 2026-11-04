@@ -42,7 +42,7 @@ In launcher order:
 | Life | Conway's Game of Life across the panel, cells coloured by age; rotate for speed, press for a new field, long press for another palette. Replaces a field that has settled by itself. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
 | Snake | Rotate to turn, press to start; keeps a persistent high score. |
-| Pokemon | Who's that Pokémon: a silhouette of one of the first 151 and four German names; rotate to pick, press to answer and reveal. Keeps the best streak. Fetched from PokéAPI at run time — personal use, see the roadmap. |
+| Pokemon | Who's that Pokémon, styled after the show: a black silhouette of one of the first 151 on turning red and blue rays with a big yellow question mark, then the reveal in colour with the German name. Press reveals or moves on, rotate skips; both happen by themselves too. Fetched from PokéAPI at run time — personal use, see the roadmap. |
 | Test Card | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |
 | Setup | Joining a WiFi network. The shell brings it up by itself whenever the device needs the user, so it is rarely opened by hand. |
 | Settings | Brightness, time zone, and which app the device starts with. |

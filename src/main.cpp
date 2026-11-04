@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
     shell.add(std::make_unique<matrixos::LifeApp>(std::random_device{}()));
     shell.add(std::make_unique<matrixos::PomodoroApp>());
     shell.add(std::make_unique<matrixos::SnakeApp>(store, std::random_device{}()));
-    shell.add(std::make_unique<matrixos::PokemonApp>(pokemon, store));
+    shell.add(std::make_unique<matrixos::PokemonApp>(pokemon));
     shell.add(std::make_unique<matrixos::TestPatternApp>());
 
     const std::size_t setup_app =

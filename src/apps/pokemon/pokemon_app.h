@@ -14,18 +14,19 @@
 namespace matrixos
 {
 
-class StateSection;
-class StateStore;
-
-/// Who's that Pokémon: a silhouette and four names. Rotate picks a name, press
-/// answers and reveals, press again for the next one. Keeps the best streak.
+/// Who's that Pokémon, as the show did it: a black silhouette on turning rays
+/// and a big yellow question mark, then the reveal in colour with the name. Not
+/// a game — no score, no answers to pick. Press reveals or moves on, rotate
+/// skips; both also happen by themselves.
 class PokemonApp : public App
 {
 public:
-    PokemonApp(PokemonService &pokemon, StateStore &store);
+    static constexpr float kGuessSeconds = 10.0F;
+    static constexpr float kRevealSeconds = 8.0F;
+
+    explicit PokemonApp(PokemonService &pokemon);
 
     std::string_view name() const override { return "Pokemon"; }
-    bool interruptible() const override { return false; }
 
     void onEnter() override;
     void onExit() override;
@@ -33,23 +34,18 @@ public:
     void update(Duration dt) override;
     void render(Surface &surface) override;
 
-    bool hasRound() const { return round_.has_value(); }
     const std::optional<PokemonRound> &round() const { return round_; }
-    int selected() const { return selected_; }
     bool revealed() const { return revealed_; }
-    int streak() const { return streak_; }
-    int best() const { return best_; }
 
 private:
     void next();
+    void reveal();
 
     PokemonService &pokemon_;
-    StateSection &saved_;
     std::optional<PokemonRound> round_;
-    int selected_ = 0;
     bool revealed_ = false;
-    int streak_ = 0;
-    int best_ = 0;
+    float phase_ = 0.0F; ///< seconds in the current guess or reveal
+    float spin_ = 0.0F;  ///< seconds, for the turning rays
     float since_poll_ = 0.0F;
 };
 
