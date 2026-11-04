@@ -24,6 +24,8 @@ constexpr Color kOutline{20, 30, 110};
 constexpr Color kFlash{255, 255, 255};
 constexpr Color kDim{70, 78, 96};
 
+constexpr int kPanelWidth = 64;
+constexpr int kPanelHeight = 32;
 constexpr int kSprite = PokemonService::kSprite;
 constexpr int kSpriteLeft = 4;
 constexpr int kSpriteTop = 1;
@@ -55,7 +57,21 @@ void drawOutlined(Surface &surface, int x, int y, std::string_view text, int sca
 
 } // namespace
 
-PokemonApp::PokemonApp(PokemonService &pokemon) : pokemon_(pokemon) {}
+PokemonApp::PokemonApp(PokemonService &pokemon) : pokemon_(pokemon)
+{
+    // Double, not float: atan2f carries a symbol version newer than the device's
+    // glibc, and the binary would not load at all.
+    const double cx = kSpriteLeft + kSprite / 2.0;
+    const double cy = kSpriteTop + kSprite / 2.0;
+    angles_.reserve(kPanelWidth * kPanelHeight);
+    for (int y = 0; y < kPanelHeight; ++y)
+    {
+        for (int x = 0; x < kPanelWidth; ++x)
+        {
+            angles_.push_back(static_cast<float>(std::atan2(y + 0.5 - cy, x + 0.5 - cx)));
+        }
+    }
+}
 
 void PokemonApp::onEnter()
 {
@@ -137,15 +153,13 @@ void PokemonApp::render(Surface &surface)
     }
 
     // Rays turning around the middle of the silhouette.
-    const float cx = kSpriteLeft + kSprite / 2.0F;
-    const float cy = kSpriteTop + kSprite / 2.0F;
     const bool flash = revealed_ && phase_ < kFlashSeconds;
-    for (int y = 0; y < surface.height(); ++y)
+    for (int y = 0; y < kPanelHeight; ++y)
     {
-        for (int x = 0; x < surface.width(); ++x)
+        for (int x = 0; x < kPanelWidth; ++x)
         {
-            const float angle =
-                std::atan2(y + 0.5F - cy, x + 0.5F - cx) + spin_ * kSpinRadiansPerSecond;
+            const float angle = angles_[static_cast<std::size_t>(y * kPanelWidth + x)] +
+                                spin_ * kSpinRadiansPerSecond;
             const int ray = static_cast<int>(std::floor(angle / (2.0F * kPi) * kRays));
             surface.setPixel(x, y, flash ? kFlash : ((ray % 2 + 2) % 2 == 0 ? kRayRed : kRayBlue));
         }

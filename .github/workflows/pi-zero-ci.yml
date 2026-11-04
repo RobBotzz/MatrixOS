@@ -75,6 +75,18 @@ jobs:
           file build-pi/bin/MatrixOS
           file build-pi/bin/MatrixOS | grep -q 'ARM aarch64'
 
+      # The cross toolchain's glibc is newer than the device's. A binary that asks
+      # for a newer symbol version builds fine here and then does not load at all:
+      # the service restarts forever and the panel stays dark. 2.41 is Trixie's.
+      - name: Verify glibc Requirement
+        run: |
+          needed=$(aarch64-linux-gnu-objdump -T build-pi/bin/MatrixOS | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -Vu | tail -1)
+          echo "needs glibc $needed, the device has 2.41"
+          if [ "$(printf '%s\n2.41\n' "$needed" | sort -V | tail -1)" != "2.41" ]; then
+            aarch64-linux-gnu-objdump -T build-pi/bin/MatrixOS | grep -E 'GLIBC_2\.(4[2-9]|[5-9][0-9])'
+            exit 1
+          fi
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:

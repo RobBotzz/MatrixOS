@@ -34,6 +34,14 @@ The glibc version matters: binaries cross-compiled on Ubuntu require `GLIBC_2.38
 Trixie satisfies and Bookworm (2.36) does not. A Bookworm device would need a Pi sysroot for
 cross-compilation or a native build.
 
+The toolchain's own glibc is newer than the device's — 2.43 on `ubuntu-latest` as of November
+2026 — so a single newly versioned function is enough to produce a binary that builds, passes
+every test and does not load on the Pi. That happened with `atan2f` (GLIBC_2.43): the service
+restarted forever on `version 'GLIBC_2.43' not found`, with a dark panel and nothing on it to say
+why. CI now fails when the binary asks for more than 2.41 (*Verify glibc Requirement* in
+`pi-zero-ci.yml`). The first thing to look at for a dark panel is therefore the journal:
+`sudo journalctl -u matrixos -b -n 40`.
+
 ## 2. Matrix timing prerequisites
 
 These three settings are what C-3 in [requirements.md](requirements.md) demands. Without the

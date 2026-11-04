@@ -10,6 +10,7 @@
 #include "os/pokemon.h"
 
 #include <optional>
+#include <vector>
 
 namespace matrixos
 {
@@ -42,6 +43,7 @@ private:
     void reveal();
 
     PokemonService &pokemon_;
+    std::vector<float> angles_; ///< per pixel, around the silhouette
     std::optional<PokemonRound> round_;
     bool revealed_ = false;
     float phase_ = 0.0F; ///< seconds in the current guess or reveal

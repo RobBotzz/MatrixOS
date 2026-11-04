@@ -1200,6 +1200,11 @@ species request instead of four, and the app is interruptible like any other: an
 picture may take the panel. The round-and-reveal shape the flag quiz could have reused is gone
 with it; the flag quiz will build its own when it comes.
 
+**Dark panel after this rework, 2026-11-04.** The turning rays called `std::atan2` on floats, and
+`atan2f` is versioned GLIBC_2.43 in the toolchain while Trixie has 2.41. The binary built, passed
+all tests and did not load on the device. The angles are now computed once, in double, and CI
+checks the binary's glibc requirement; see device-setup.md §1.
+
 **The Instagram QR code only just fits, and only for short handles.** A version-1 QR is 21x21
 modules and needs a four-module quiet zone, so 29x29 pixels — three to spare in the panel's
 32-pixel height, with the follower count alongside it in the remaining 35 columns. The cost is
