@@ -42,7 +42,7 @@ constexpr int kSprite = PokemonService::kSprite;
 constexpr int kSpriteLeft = 4;
 constexpr int kSpriteTop = 0;
 constexpr int kBandTop = 25;
-constexpr int kQuestionLeft = 43;
+constexpr int kQuestionLeft = 41;
 constexpr int kQuestionTop = 3;
 constexpr int kQuestionScale = 3;
 constexpr int kDotsX = 60;
@@ -373,14 +373,14 @@ void PokemonApp::renderScores(Surface &surface) const
     for (std::size_t row = 0; row < kRows && scroll_ + row < entries.size(); ++row)
     {
         const std::size_t place = scroll_ + row;
-        const int y = kRowHeight * static_cast<int>(row + 1);
+        const int y = kRowHeight * static_cast<int>(row + 1) + 1;
         const Color colour = highlight_ == place ? kYellow : kText;
         const std::string rank = std::to_string(place + 1);
         const std::string score = std::to_string(entries[place].score);
 
-        drawText(surface, rightAlignedTextX(10, rank), y, rank, kDim);
-        drawText(surface, 14, y, entries[place].name, colour);
-        drawText(surface, rightAlignedTextX(kPanelWidth - 1, score), y, score, colour);
+        drawText(surface, rightAlignedTextX(9, rank), y, rank, kDim);
+        drawText(surface, 13, y, entries[place].name, colour);
+        drawText(surface, rightAlignedTextX(kPanelWidth - 2, score), y, score, colour);
     }
 }
 
