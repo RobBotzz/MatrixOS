@@ -149,6 +149,7 @@ add_library(matrixos_core STATIC
     src/apps/weather/weather_app.cpp
     src/apps/gallery/gallery_app.cpp
     src/apps/life/life.cpp
+    src/apps/life/patterns.cpp
     src/apps/worldmap/world_map_app.cpp
     src/apps/pokemon/pokemon_app.cpp
     src/apps/scores/score_screens.cpp

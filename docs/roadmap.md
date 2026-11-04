@@ -1024,6 +1024,16 @@ afterglow when they die. Rotate for one of five speeds, press for a new random f
 for one of three palettes. A field that only repeats itself (still or period 2) or drops below a
 dozen cells for four seconds is replaced, and so is any field after 2000 generations.
 
+**A menu of structures, 2026-11-04.** The app now opens on a menu: random fields as before, or one
+of five known structures, which are never replaced. Press returns to the menu from either, so a
+new random field is two presses. The field wraps, which rules out the obvious choice: the gliders
+of a Gosper gun come back around and destroy it. Every layout in `apps/life/patterns` is therefore
+built to repeat, and a test holds each to its period. The glider gun gets an eater where the stream
+ends, the gun duel uses two guns at offsets where the gliders annihilate head on, the fleet is five
+spaceships in lanes of their own, the garden holds two pulsars, Kok's galaxy and a pentadecathlon,
+and the last is five queen bee shuttles. Two pulsars do not fit above each other: they need 15 rows
+each plus a gap, and touching ones collapse.
+
 **Day/night world map — built 2026-11-01**, as the app "World". The land mask is the compiled-in
 dataset this list foresaw: `tools/landmask_to_header.py` rasterises Natural Earth's 1:110m land
 (public domain) at 6x6 samples per pixel into 256 bytes in `gfx/world_map_data.h`. The projection

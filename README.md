@@ -39,7 +39,7 @@ In launcher order:
 | Gallery | Pictures and GIFs friends send to this panel through its send link, newest first; rotate to browse. A new picture takes the panel unless a game or timer is running. |
 | Morse | Morse trainer in four modes — tap a dot, hold a dash, or read the code and pick the letter. Separate records for sending and reading. |
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
-| Life | Conway's Game of Life across the panel, cells coloured by age; rotate for speed, press for a new field, long press for another palette. Replaces a field that has settled by itself. |
+| Life | Conway's Game of Life across the panel, cells coloured by age. A menu offers random fields or five known structures that run forever: a glider gun, two guns in a duel, a fleet of spaceships, a garden of oscillators and queen bee shuttles. Rotate for speed, press for the menu, long press for another palette. A random field that has settled is replaced by itself. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
 | Snake | Rotate to turn, press to start. Gold food is worth more but disappears quickly, and walls grow as you eat. A good score goes on a persistent top-ten board. |
 | Pokemon | Who's that Pokémon, in the look of the show: a silhouette of one of the first 151 and four German names; rotate to pick, press to answer. One wrong answer ends the run, a good score goes on a persistent top-ten board. Fetched from PokéAPI at run time — personal use, see the roadmap. |

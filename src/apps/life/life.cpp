@@ -6,9 +6,12 @@
 
 #include "apps/life/life.h"
 
+#include "apps/life/patterns.h"
+#include "gfx/font.h"
 #include "gfx/surface.h"
 
 #include <algorithm>
+#include <string>
 
 namespace matrixos
 {
@@ -38,6 +41,18 @@ constexpr std::array<Palette, LifeApp::kPalettes> kColourSets = {{
 
 constexpr int kAgeToOld = 24;
 
+constexpr int kMenuEntries = 1 + static_cast<int>(kLifePatterns);
+constexpr int kMenuRows = 3;
+constexpr int kRowHeight = 8;
+constexpr Color kTitle{255, 255, 255};
+constexpr Color kChosen{255, 215, 0};
+constexpr Color kOther{110, 120, 140};
+
+std::string_view menuName(int entry)
+{
+    return entry == 0 ? "RANDOM" : lifePatternName(static_cast<std::size_t>(entry - 1));
+}
+
 Color mix(Color a, Color b, int step, int steps)
 {
     const auto channel = [step, steps](std::uint8_t from, std::uint8_t to)
@@ -55,7 +70,30 @@ int index(int x, int y)
 LifeApp::LifeApp(std::uint32_t seed)
     : random_(seed), age_(kWidth * kHeight, 0), glow_(kWidth * kHeight, 0)
 {
-    this->seed();
+}
+
+void LifeApp::onEnter()
+{
+    screen_ = Screen::Menu;
+}
+
+void LifeApp::start()
+{
+    if (selected_ == 0)
+    {
+        seed();
+    }
+    else
+    {
+        setCells(lifePatternCells(static_cast<std::size_t>(selected_ - 1)));
+    }
+    since_step_ = 0.0F;
+    screen_ = Screen::Running;
+}
+
+void LifeApp::select(int delta)
+{
+    selected_ = ((selected_ + delta) % kMenuEntries + kMenuEntries) % kMenuEntries;
 }
 
 void LifeApp::seed()
@@ -160,10 +198,24 @@ void LifeApp::onInput(const InputEvent &event)
     switch (event.type)
     {
     case InputType::Rotate:
-        speed_ = std::clamp(speed_ + event.delta, 0, kSpeeds - 1);
+        if (screen_ == Screen::Menu)
+        {
+            select(event.delta);
+        }
+        else
+        {
+            speed_ = std::clamp(speed_ + event.delta, 0, kSpeeds - 1);
+        }
         break;
     case InputType::Press:
-        seed();
+        if (screen_ == Screen::Menu)
+        {
+            start();
+        }
+        else
+        {
+            screen_ = Screen::Menu;
+        }
         break;
     case InputType::LongPress:
         palette_ = (palette_ + 1) % kPalettes;
@@ -175,12 +227,21 @@ void LifeApp::onInput(const InputEvent &event)
 
 void LifeApp::update(Duration dt)
 {
+    if (screen_ == Screen::Menu)
+    {
+        return;
+    }
+
     since_step_ += dt.count();
     const float interval = kStepSeconds[static_cast<std::size_t>(speed_)];
     while (since_step_ >= interval)
     {
         since_step_ -= interval;
         step();
+        if (selected_ != 0)
+        {
+            continue;
+        }
 
         // A still life repeats the last fingerprint, a blinker the one before.
         const std::uint64_t now = fingerprint();
@@ -195,8 +256,27 @@ void LifeApp::update(Duration dt)
     }
 }
 
+void LifeApp::renderMenu(Surface &surface) const
+{
+    drawTextCentered(surface, 1, "LIFE", kTitle);
+
+    const int first = std::clamp(selected_ - 1, 0, kMenuEntries - kMenuRows);
+    for (int row = 0; row < kMenuRows; ++row)
+    {
+        const int entry = first + row;
+        drawTextCentered(surface, kRowHeight * (row + 1) + 1, menuName(entry),
+                         entry == selected_ ? kChosen : kOther);
+    }
+}
+
 void LifeApp::render(Surface &surface)
 {
+    if (screen_ == Screen::Menu)
+    {
+        renderMenu(surface);
+        return;
+    }
+
     const Palette &colours = kColourSets[static_cast<std::size_t>(palette_)];
     for (int y = 0; y < kHeight; ++y)
     {
