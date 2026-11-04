@@ -151,6 +151,7 @@ add_library(matrixos_core STATIC
     src/apps/life/life.cpp
     src/apps/worldmap/world_map_app.cpp
     src/apps/pokemon/pokemon_app.cpp
+    src/apps/pokemon/scoreboard.cpp
     src/apps/spotify/spotify_app.cpp
 )
 target_include_directories(matrixos_core PUBLIC

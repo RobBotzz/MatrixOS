@@ -1205,6 +1205,17 @@ with it; the flag quiz will build its own when it comes.
 all tests and did not load on the device. The angles are now computed once, in double, and CI
 checks the binary's glibc requirement; see device-setup.md §1.
 
+**A game after all, 2026-11-04.** Once on the panel, the maintainer wanted both: the look of the
+show and the game. So the "show" above is replaced. The background now follows the original
+frame: a white-to-teal burst around a blue silhouette on the left, red rays with orange streaks
+on the right, moving slowly. The top ten come first; a press starts a run. Rotate picks one of
+four names shown below the picture, press answers, and nothing is revealed before that. The
+streak stands top right. A wrong answer ends the run: a score that makes the top ten asks for a
+name of up to five letters — rotate changes the letter, press moves on, a long press finishes
+early, the last name is offered again — and the board follows. A score of zero, or one too low
+for a full board, goes straight to it. The app is not interruptible again. The board lives in
+`pokemon.conf` through `apps/pokemon/scoreboard`.
+
 **The Instagram QR code only just fits, and only for short handles.** A version-1 QR is 21x21
 modules and needs a four-module quiet zone, so 29x29 pixels — three to spare in the panel's
 32-pixel height, with the follower count alongside it in the remaining 35 columns. The cost is

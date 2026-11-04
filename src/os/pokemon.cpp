@@ -11,6 +11,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 
 namespace matrixos
@@ -145,25 +146,70 @@ bool PokemonService::offline() const
     return offline_;
 }
 
+std::optional<std::string> PokemonService::name(int id)
+{
+    {
+        std::lock_guard lock(mutex_);
+        if (const auto found = names_.find(id); found != names_.end())
+        {
+            return found->second;
+        }
+    }
+    const std::optional<std::string> body = fetch_(speciesUrl(id));
+    std::optional<std::string> german = body ? germanName(*body) : std::nullopt;
+    if (!german)
+    {
+        return std::nullopt;
+    }
+    std::string folded = panelName(*german);
+    std::lock_guard lock(mutex_);
+    names_[id] = folded;
+    return folded;
+}
+
 bool PokemonService::prepare()
 {
-    PokemonRound round;
-    round.id = std::uniform_int_distribution<int>(1, kCount)(random_);
+    std::uniform_int_distribution<int> pick(1, kCount);
+    std::vector<int> ids;
+    while (ids.size() < 4)
+    {
+        const int id = pick(random_);
+        if (std::find(ids.begin(), ids.end(), id) == ids.end())
+        {
+            ids.push_back(id);
+        }
+    }
 
-    const std::optional<std::string> species = fetch_(speciesUrl(round.id));
-    const std::optional<std::string> german = species ? germanName(*species) : std::nullopt;
-    const std::optional<std::string> png = german ? fetch_(spriteUrl(round.id)) : std::nullopt;
+    PokemonRound round;
+    round.id = ids[0];
+    for (std::size_t i = 0; i < ids.size(); ++i)
+    {
+        std::optional<std::string> found = name(ids[i]);
+        if (!found)
+        {
+            std::lock_guard lock(mutex_);
+            offline_ = true;
+            return false;
+        }
+        round.options[i] = std::move(*found);
+    }
+
+    const std::optional<std::string> png = fetch_(spriteUrl(round.id));
     std::optional<std::vector<std::uint8_t>> sprite =
         png ? decodeSprite(*png, kSprite) : std::nullopt;
-
-    std::lock_guard lock(mutex_);
     if (!sprite)
     {
-        offline_ = !species.has_value() || (german && !png.has_value());
+        std::lock_guard lock(mutex_);
+        offline_ = !png.has_value();
         return false;
     }
-    round.name = panelName(*german);
     round.sprite = std::move(*sprite);
+
+    std::shuffle(round.options.begin() + 1, round.options.end(), random_);
+    round.answer = std::uniform_int_distribution<int>(0, 3)(random_);
+    std::swap(round.options[0], round.options[static_cast<std::size_t>(round.answer)]);
+
+    std::lock_guard lock(mutex_);
     offline_ = false;
     ready_.push_back(std::move(round));
     return true;

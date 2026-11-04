@@ -6,12 +6,14 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <random>
@@ -23,12 +25,13 @@
 namespace matrixos
 {
 
-/// One Pokémon to guess: its name and its sprite.
+/// One question: a sprite and four names, one of them right.
 struct PokemonRound
 {
     int id = 0;
-    std::string name;                 ///< already folded for the panel's font
-    std::vector<std::uint8_t> sprite; ///< RGBA, kSprite x kSprite
+    std::array<std::string, 4> options; ///< already folded for the panel's font
+    int answer = 0;                     ///< index into `options`
+    std::vector<std::uint8_t> sprite;   ///< RGBA, kSprite x kSprite
 };
 
 /// The German name from a PokéAPI `pokemon-species` answer.
@@ -79,12 +82,14 @@ public:
 
 private:
     void run();
+    std::optional<std::string> name(int id);
 
     Fetch fetch_;
     Timing timing_;
     std::mt19937 random_; ///< worker only, or the tests
 
     mutable std::mutex mutex_;
+    std::map<int, std::string> names_;
     std::deque<PokemonRound> ready_;
     bool active_ = false;
     bool offline_ = false;
