@@ -13,6 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdlib>
+#include <string>
 
 using namespace matrixos;
 using matrixos::test::TempDir;
@@ -46,11 +47,17 @@ void start(SnakeApp &app)
     send(app, InputType::Press);
 }
 
-/// Turns at most a quarter towards the food and takes one step.
-void chaseFood(SnakeApp &app)
+/// Plays the crash animation to its end.
+void crumble(SnakeApp &app)
+{
+    REQUIRE(app.state() == SnakeApp::State::Dying);
+    app.update(Duration{SnakeApp::kDyingSeconds});
+}
+
+/// Turns at most a quarter towards `food` and takes one step.
+void chase(SnakeApp &app, SnakeApp::Cell food)
 {
     const SnakeApp::Cell head = app.head();
-    const SnakeApp::Cell food = app.food();
 
     SnakeApp::Direction want = app.direction();
     if (food.x != head.x)
@@ -73,6 +80,33 @@ void chaseFood(SnakeApp &app)
     }
 
     stepOnce(app);
+}
+
+void chaseFood(SnakeApp &app)
+{
+    chase(app, app.food());
+}
+
+/// Ends a running game against the nearest wall.
+void crash(SnakeApp &app)
+{
+    for (int i = 0; i < 4 * SnakeApp::kColumns && app.state() == SnakeApp::State::Running; ++i)
+    {
+        stepOnce(app);
+    }
+}
+
+/// Plays until `done` says so, trying seeds until the greedy chase survives that long.
+template <typename Done> void playUntil(SnakeApp &app, Done done)
+{
+    for (int guard = 0; guard < 2000 && !done(); ++guard)
+    {
+        if (app.state() != SnakeApp::State::Running)
+        {
+            return;
+        }
+        chaseFood(app);
+    }
 }
 
 } // namespace
@@ -162,8 +196,9 @@ TEST_CASE("running into a wall ends the game")
     StateStore store = StateStore::inMemory();
     SnakeApp app(store, kSeed);
     start(app);
-    steps(app, SnakeApp::kColumns);
+    crash(app);
 
+    crumble(app);
     CHECK(app.state() == SnakeApp::State::Dead);
 }
 
@@ -237,7 +272,37 @@ TEST_CASE("leaving mid-game pauses instead of playing on unattended")
     CHECK(app.state() == SnakeApp::State::Paused);
 }
 
-TEST_CASE("the high score is written the moment it is beaten and survives a restart")
+TEST_CASE("a run that makes the board asks for a name and survives a restart")
+{
+    TempDir dir;
+    int earned = 0;
+
+    {
+        StateStore store(dir.path());
+        SnakeApp app(store, kSeed);
+        start(app);
+
+        playUntil(app, [&app] { return app.score() >= 2; });
+        earned = app.score();
+        REQUIRE(earned >= 2);
+
+        crash(app);
+        crumble(app);
+        REQUIRE(app.state() == SnakeApp::State::EnterName);
+
+        send(app, InputType::Rotate, 1);
+        send(app, InputType::LongPress);
+        REQUIRE(app.state() == SnakeApp::State::Idle);
+    }
+
+    StateStore reopened(dir.path());
+    SnakeApp later(reopened, kSeed);
+    REQUIRE(later.scoreboard().entries().size() == 1);
+    CHECK(later.scoreboard().entries()[0].name == "A");
+    CHECK(later.scoreboard().entries()[0].score == earned);
+}
+
+TEST_CASE("a run cut off by a pulled plug still reaches the board, once")
 {
     TempDir dir;
 
@@ -245,65 +310,196 @@ TEST_CASE("the high score is written the moment it is beaten and survives a rest
         StateStore store(dir.path());
         SnakeApp app(store, kSeed);
         start(app);
+        playUntil(app, [&app] { return app.score() >= 1; });
+        REQUIRE(app.state() == SnakeApp::State::Running);
 
-        int guard = 0;
-        while (app.score() < 2 && guard++ < 400)
-        {
-            chaseFood(app);
-        }
-        REQUIRE(app.score() == 2);
-
-        for (int i = 0; i < 4 * SnakeApp::kColumns && app.state() == SnakeApp::State::Running; ++i)
-        {
-            stepOnce(app);
-        }
-        REQUIRE(app.state() == SnakeApp::State::Dead);
-        CHECK(app.highScore() == 2);
-
-        StateStore observer(dir.path()); // nobody called save()
-        CHECK(observer.section("snake").getInt("highscore", 0) == 2);
+        StateStore observer(dir.path()); // acceptance criterion 3, nobody called save()
+        CHECK(observer.section("snake").getInt("banked", 0) == app.score());
     }
 
-    StateStore reopened(dir.path());
-    SnakeApp later(reopened, kSeed);
-    later.onEnter();
-    CHECK(later.highScore() == 2);
-}
-
-TEST_CASE("the record is banked while the game is still running")
-{
-    TempDir dir;
-    StateStore store(dir.path());
-    SnakeApp app(store, kSeed);
-    start(app);
-
-    int guard = 0;
-    while (app.score() == 0 && guard++ < 200)
     {
-        chaseFood(app);
+        StateStore reopened(dir.path());
+        SnakeApp later(reopened, kSeed);
+        REQUIRE(later.scoreboard().entries().size() == 1);
+        CHECK(later.scoreboard().entries()[0].name == "???");
     }
-    REQUIRE(app.state() == SnakeApp::State::Running);
 
-    StateStore observer(dir.path()); // acceptance criterion 3
-    CHECK(observer.section("snake").getInt("highscore", 0) == 1);
+    StateStore again(dir.path());
+    SnakeApp once_more(again, kSeed);
+    CHECK(once_more.scoreboard().entries().size() == 1);
 }
 
-TEST_CASE("a worse game leaves the high score alone")
+TEST_CASE("a score too low for the board ends on the score, and a press shows the board")
 {
-    TempDir dir;
-    StateStore store(dir.path());
-    store.section("snake").setInt("highscore", 99);
-
+    StateStore store = StateStore::inMemory();
     SnakeApp app(store, kSeed);
     start(app);
-    steps(app, SnakeApp::kColumns);
+    crash(app);
+    crumble(app);
 
     REQUIRE(app.state() == SnakeApp::State::Dead);
-    CHECK(app.highScore() == 99);
-    CHECK(store.section("snake").getInt("highscore", 0) == 99);
+    CHECK(app.scoreboard().entries().empty());
+
+    send(app, InputType::Press);
+    CHECK(app.state() == SnakeApp::State::Idle);
+
+    send(app, InputType::Press);
+    CHECK(app.state() == SnakeApp::State::Running);
 }
 
-TEST_CASE("the field is framed and the cells are two pixels square")
+TEST_CASE("a hold during a good run settles the score instead of dropping it")
+{
+    StateStore store = StateStore::inMemory();
+    SnakeApp app(store, kSeed);
+    start(app);
+    playUntil(app, [&app] { return app.score() >= 1; });
+
+    send(app, InputType::LongPress);
+    CHECK(app.state() == SnakeApp::State::EnterName);
+}
+
+TEST_CASE("presses cannot cut the crash animation short")
+{
+    StateStore store = StateStore::inMemory();
+    SnakeApp app(store, kSeed);
+    start(app);
+    crash(app);
+    REQUIRE(app.state() == SnakeApp::State::Dying);
+
+    send(app, InputType::Press);
+    send(app, InputType::LongPress);
+    CHECK(app.state() == SnakeApp::State::Dying);
+}
+
+TEST_CASE("the crash crumbles the snake away")
+{
+    StateStore store = StateStore::inMemory();
+    SnakeApp app(store, kSeed);
+    start(app);
+    crash(app);
+
+    const auto body_pixels = [&app]
+    {
+        Surface frame(64, 32);
+        app.render(frame);
+        int count = 0;
+        for (int y = 0; y < 32; ++y)
+        {
+            for (int x = 0; x < 64; ++x)
+            {
+                count += frame.pixel(x, y) == Color{0x22, 0xC5, 0x5E} ? 1 : 0;
+            }
+        }
+        return count;
+    };
+
+    CHECK(body_pixels() > 0);
+    app.update(Duration{SnakeApp::kDyingSeconds - 0.01F});
+    REQUIRE(app.state() == SnakeApp::State::Dying);
+    CHECK(body_pixels() == 0);
+}
+
+TEST_CASE("gold food is worth more but speeds the snake up like any other")
+{
+    bool eaten_gold = false;
+    for (std::uint32_t seed = 1; seed < 100 && !eaten_gold; ++seed)
+    {
+        StateStore store = StateStore::inMemory();
+        SnakeApp app(store, seed);
+        start(app);
+        playUntil(app, [&app] { return app.gold().has_value(); });
+        if (!app.gold())
+        {
+            continue;
+        }
+
+        const int score = app.score();
+        const int eaten = app.eaten();
+        const SnakeApp::Cell gold = *app.gold();
+        while (app.state() == SnakeApp::State::Running && app.gold() && app.eaten() == eaten)
+        {
+            chase(app, gold);
+        }
+
+        if (app.state() == SnakeApp::State::Running && !app.gold() && app.eaten() == eaten + 1)
+        {
+            eaten_gold = true;
+            CHECK(app.score() == score + SnakeApp::kGoldPoints);
+            CHECK(app.length() == SnakeApp::kStartLength + static_cast<std::size_t>(eaten) + 1);
+        }
+    }
+    CHECK(eaten_gold);
+}
+
+TEST_CASE("gold food goes away after its time, which stands still in a pause")
+{
+    bool found = false;
+    for (std::uint32_t seed = 1; seed < 100 && !found; ++seed)
+    {
+        StateStore store = StateStore::inMemory();
+        SnakeApp app(store, seed);
+        start(app);
+        playUntil(app, [&app] { return app.gold().has_value(); });
+        if (!app.gold())
+        {
+            continue;
+        }
+        found = true;
+
+        send(app, InputType::Press);
+        app.update(Duration{SnakeApp::kGoldSeconds * 2.0F});
+        CHECK(app.gold().has_value());
+
+        send(app, InputType::Press);
+        app.update(Duration{SnakeApp::kGoldSeconds});
+        CHECK_FALSE(app.gold().has_value());
+    }
+    CHECK(found);
+}
+
+TEST_CASE("walls grow with the food, keep off the rim and each other, and kill")
+{
+    bool hit = false;
+    for (std::uint32_t seed = 1; seed < 500 && !hit; ++seed)
+    {
+        StateStore store = StateStore::inMemory();
+        SnakeApp app(store, seed);
+        start(app);
+        CHECK(app.walls().empty());
+
+        playUntil(app, [&app] { return app.walls().size() >= 4; });
+        if (app.walls().size() < 4)
+        {
+            continue;
+        }
+
+        const auto walls = app.walls();
+        CHECK(app.eaten() >= 2 * SnakeApp::kFoodPerWall);
+        for (const SnakeApp::Cell &wall : walls)
+        {
+            CHECK(wall.x >= 1);
+            CHECK(wall.x <= SnakeApp::kColumns - 2);
+            CHECK(wall.y >= 1);
+            CHECK(wall.y <= SnakeApp::kRows - 2);
+        }
+        CHECK((std::abs(walls[0].x - walls[2].x) > 1 || std::abs(walls[0].y - walls[2].y) > 1));
+
+        for (int guard = 0; guard < 200 && app.state() == SnakeApp::State::Running; ++guard)
+        {
+            chase(app, walls[0]);
+        }
+        const SnakeApp::Cell head = app.head();
+        hit = std::abs(head.x - walls[0].x) + std::abs(head.y - walls[0].y) == 1 ||
+              std::abs(head.x - walls[1].x) + std::abs(head.y - walls[1].y) == 1;
+        if (hit)
+        {
+            CHECK(app.state() == SnakeApp::State::Dying);
+        }
+    }
+    CHECK(hit);
+}
+
+TEST_CASE("the field is framed and the cells are three pixels square")
 {
     StateStore store = StateStore::inMemory();
     SnakeApp app(store, kSeed);
@@ -320,21 +516,29 @@ TEST_CASE("the field is framed and the cells are two pixels square")
     for (int y = 0; y < 32; ++y)
     {
         CHECK_FALSE(frame.pixel(0, y) == Color::black());
+        CHECK_FALSE(frame.pixel(1, y) == Color::black());
+        CHECK_FALSE(frame.pixel(62, y) == Color::black());
         CHECK_FALSE(frame.pixel(63, y) == Color::black());
     }
 
     const SnakeApp::Cell head = app.head();
-    const Color drawn = frame.pixel(1 + head.x * 2, 1 + head.y * 2);
-    CHECK(frame.pixel(1 + head.x * 2 + 1, 1 + head.y * 2) == drawn);
-    CHECK(frame.pixel(1 + head.x * 2, 1 + head.y * 2 + 1) == drawn);
-    CHECK(frame.pixel(1 + head.x * 2 + 1, 1 + head.y * 2 + 1) == drawn);
+    const int left = 2 + head.x * 3;
+    const int top = 1 + head.y * 3;
+    const Color drawn = frame.pixel(left, top);
+    CHECK_FALSE(drawn == Color::black());
+    for (int y = 0; y < 3; ++y)
+    {
+        for (int x = 0; x < 3; ++x)
+        {
+            CHECK(frame.pixel(left + x, top + y) == drawn);
+        }
+    }
 }
 
-TEST_CASE("the start screen shows the high score")
+TEST_CASE("the board comes first")
 {
-    TempDir dir;
-    StateStore store(dir.path());
-    store.section("snake").setInt("highscore", 7);
+    StateStore store = StateStore::inMemory();
+    Scoreboard(store.section("snake")).add("ROBIN", 7);
 
     SnakeApp app(store, kSeed);
     app.onEnter();
@@ -344,19 +548,12 @@ TEST_CASE("the start screen shows the high score")
 
     REQUIRE(app.state() == SnakeApp::State::Idle);
 
-    bool anything_below_the_title = false;
-    for (int y = 20; y < 31 && !anything_below_the_title; ++y)
+    bool first_row = false;
+    for (int x = 0; x < 64; ++x)
     {
-        for (int x = 1; x < 63; ++x)
-        {
-            if (!(frame.pixel(x, y) == Color::black()))
-            {
-                anything_below_the_title = true;
-                break;
-            }
-        }
+        first_row = first_row || !(frame.pixel(x, 11) == Color::black());
     }
-    CHECK(anything_below_the_title);
+    CHECK(first_row);
 }
 
 TEST_CASE("dying against your own body keeps the score you earned")
@@ -381,7 +578,7 @@ TEST_CASE("dying against your own body keeps the score you earned")
         stepOnce(app);
     }
 
-    REQUIRE(app.state() == SnakeApp::State::Dead);
+    crumble(app);
     CHECK(app.score() == earned);
-    CHECK(app.highScore() == app.score());
+    CHECK(app.state() == SnakeApp::State::EnterName);
 }

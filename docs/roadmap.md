@@ -332,6 +332,27 @@ invisible — and the panel's own rim is hard to judge in a dark room. A score b
 was the other option and costs a quarter of the field; the score goes on the idle and game-over
 screens instead, which are the two moments anyone reads it.
 
+**Bigger cells and a calmer pace, 2026-11-04.** Cells are now 3x3 pixels, so the field is 20x10.
+The panel does not divide evenly by three: 60 of the 64 columns are play area, which makes the
+side walls two pixels thick and leaves the top and bottom at one. Speed starts at 3 cells per
+second and gains 0.1 per food up to 8, reached at 50 food. It used to start at 5 and gain 0.35 up
+to 14, which got hard within about twenty food.
+
+**More to play for, 2026-11-04.** Snake takes over the top-ten board from the Pokémon game, so the
+board and the name entry moved to `apps/scores`; the board comes first and follows a good run, and
+the title screen is gone. The single `highscore` in `snake.conf` is no longer read: it came from
+the larger field. Criterion 3 still holds through `banked`, the score of the run in progress,
+written as it grows; a crash or a pulled plug puts it on the board at the next start, under the
+last name.
+
+Gold food appears after one ordinary food in five and stays five seconds, the last one and a half
+blinking. It is worth 5 points and counts as one food for speed, since speed follows food eaten
+rather than score. Every tenth food raises a wall of two cells, at least five cells from the head.
+Walls keep off the outer ring and never touch each other, even at a corner, so no free cell can be
+cut off and no pocket can form; when no such spot is left they stop growing. On a crash the head
+turns red, then the snake crumbles from head to tail, pixels letting go one at a time and falling.
+Presses are ignored for those two seconds so that a stray one does not skip the name entry.
+
 **Startup is a setting, not a precedence rule.** FR-19 (restore the last active app) and FR-25 (a
 default app) collide at boot, and the tidy way out is to stop treating it as a collision: the
 settings app offers `Start` = [Last app, Plasma, Pomodoro, Snake, …] and defaults to _Last app_.

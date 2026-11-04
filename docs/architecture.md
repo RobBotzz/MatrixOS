@@ -289,6 +289,7 @@ src/
     plasma/               v0.1 animation app
     pomodoro/             v0.2 focus/break cycle
     snake/                v0.3 game
+    scores/               top-ten board and name entry, for Snake and Pokemon
     settings/             v0.3 brightness, startup app, time zone
     testpattern/          panel diagnostics
     clock/                v0.4 wall clock

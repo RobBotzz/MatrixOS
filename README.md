@@ -41,7 +41,7 @@ In launcher order:
 | Plasma | Four animated variants; rotate to switch, press to freeze. |
 | Life | Conway's Game of Life across the panel, cells coloured by age; rotate for speed, press for a new field, long press for another palette. Replaces a field that has settled by itself. |
 | Pomodoro | Focus/break cycle timer; rotate to set durations, press to advance, long-press to reset. |
-| Snake | Rotate to turn, press to start; keeps a persistent high score. |
+| Snake | Rotate to turn, press to start. Gold food is worth more but disappears quickly, and walls grow as you eat. A good score goes on a persistent top-ten board. |
 | Pokemon | Who's that Pokémon, in the look of the show: a silhouette of one of the first 151 and four German names; rotate to pick, press to answer. One wrong answer ends the run, a good score goes on a persistent top-ten board. Fetched from PokéAPI at run time — personal use, see the roadmap. |
 | Test Card | Diagnostic frame — border, corner marker, three colour gradients — for checking panel geometry and wiring at a glance. |
 | Setup | Joining a WiFi network. The shell brings it up by itself whenever the device needs the user, so it is rarely opened by hand. |

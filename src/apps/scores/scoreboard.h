@@ -22,7 +22,7 @@ struct ScoreEntry
     int score = 0;
 };
 
-/// The best streaks, highest first, kept in the state store.
+/// The best runs of one game, highest first, kept in the state store.
 class Scoreboard
 {
 public:

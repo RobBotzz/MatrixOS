@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace matrixos
@@ -23,12 +24,15 @@ namespace
 {
 
 constexpr std::string_view kSection = "snake";
-constexpr std::string_view kHighScoreKey = "highscore";
+// The score of a run still going. A pulled plug must not cost a run that made the
+// board, so it is written as it grows and picked up at the next start.
+constexpr std::string_view kBankedKey = "banked";
 
-constexpr int kCell = 2;
-constexpr int kBorder = 1;
-constexpr int kFieldWidth = SnakeApp::kColumns * kCell + 2 * kBorder;
-constexpr int kFieldHeight = SnakeApp::kRows * kCell + 2 * kBorder;
+constexpr int kCell = 3;
+constexpr int kBorderX = 2;
+constexpr int kBorderY = 1;
+constexpr int kFieldWidth = SnakeApp::kColumns * kCell + 2 * kBorderX;
+constexpr int kFieldHeight = SnakeApp::kRows * kCell + 2 * kBorderY;
 static_assert(kFieldWidth == 64);
 static_assert(kFieldHeight == 32);
 
@@ -36,14 +40,44 @@ constexpr Color kBorderColor{26, 26, 44};
 constexpr Color kBody{0x22, 0xC5, 0x5E};
 constexpr Color kHead{0xA0, 0xFF, 0xC0};
 constexpr Color kFood{0xFF, 0x43, 0x26};
-constexpr Color kTitle{0x22, 0xC5, 0x5E};
+constexpr Color kGold{255, 215, 0};
+constexpr Color kWall{95, 105, 135};
 constexpr Color kLabel{140, 140, 160};
 constexpr Color kScore{255, 255, 255};
 constexpr Color kRecord{255, 190, 0};
 
-constexpr float kBlinkPeriod = 0.7F;
+constexpr float kGoldWarnSeconds = 1.5F; // blinks for its last moments
+constexpr float kGoldBlinkPeriod = 0.2F;
+
+constexpr int kWallClearance = 5; // cells from the head, so a wall never lands in its face
+
+constexpr float kCrashSeconds = 0.3F;   // everything holds still, the head turns red
+constexpr float kCrumbleSeconds = 1.0F; // head to tail
+constexpr float kLoosenSeconds = 0.25F; // the pixels of one cell let go one by one
+constexpr float kFallSeconds = 0.6F;
+constexpr float kGravity = 60.0F; // pixels per second squared
+static_assert(kCrashSeconds + kCrumbleSeconds + kLoosenSeconds + kFallSeconds <=
+              SnakeApp::kDyingSeconds);
 
 constexpr int kMaxStepsPerFrame = 4; // caps catch-up after a stall
+
+Color dimmed(Color color, float amount)
+{
+    const auto channel = [amount](std::uint8_t value)
+    { return static_cast<std::uint8_t>(static_cast<float>(value) * amount); };
+    return {channel(color.r), channel(color.g), channel(color.b)};
+}
+
+/// 0 to 1, always the same for one pixel.
+float scatter(int x, int y)
+{
+    auto hash =
+        static_cast<std::uint32_t>(x) * 73856093U ^ static_cast<std::uint32_t>(y) * 19349663U;
+    hash ^= hash >> 13;
+    hash *= 2654435761U;
+    hash ^= hash >> 16;
+    return static_cast<float>(hash & 0xFFFFU) / 65535.0F;
+}
 
 void drawCentered(Surface &surface, int y, std::string_view text, Color color, int scale = 1)
 {
@@ -54,13 +88,19 @@ void drawFrame(Surface &surface)
 {
     for (int x = 0; x < surface.width(); ++x)
     {
-        surface.setPixel(x, 0, kBorderColor);
-        surface.setPixel(x, surface.height() - 1, kBorderColor);
+        for (int i = 0; i < kBorderY; ++i)
+        {
+            surface.setPixel(x, i, kBorderColor);
+            surface.setPixel(x, surface.height() - 1 - i, kBorderColor);
+        }
     }
     for (int y = 0; y < surface.height(); ++y)
     {
-        surface.setPixel(0, y, kBorderColor);
-        surface.setPixel(surface.width() - 1, y, kBorderColor);
+        for (int i = 0; i < kBorderX; ++i)
+        {
+            surface.setPixel(i, y, kBorderColor);
+            surface.setPixel(surface.width() - 1 - i, y, kBorderColor);
+        }
     }
 }
 
@@ -70,7 +110,7 @@ void drawCell(Surface &surface, SnakeApp::Cell cell, Color color)
     {
         for (int dx = 0; dx < kCell; ++dx)
         {
-            surface.setPixel(kBorder + cell.x * kCell + dx, kBorder + cell.y * kCell + dy, color);
+            surface.setPixel(kBorderX + cell.x * kCell + dx, kBorderY + cell.y * kCell + dy, color);
         }
     }
 }
@@ -96,16 +136,22 @@ bool inside(SnakeApp::Cell cell)
     return cell.x >= 0 && cell.x < SnakeApp::kColumns && cell.y >= 0 && cell.y < SnakeApp::kRows;
 }
 
+bool same(SnakeApp::Cell a, SnakeApp::Cell b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
 } // namespace
 
 SnakeApp::SnakeApp(StateStore &store, std::uint32_t seed)
-    : scores_(store.section(kSection)), random_(seed)
+    : saved_(store.section(kSection)), scores_(saved_), random_(seed)
 {
-}
-
-void SnakeApp::onEnter()
-{
-    high_score_ = std::max(0, scores_.getInt(kHighScoreKey, 0));
+    const int banked = saved_.getInt(kBankedKey, 0);
+    if (scores_.board().qualifies(banked))
+    {
+        scores_.addUnasked(banked);
+    }
+    clearBankedScore();
 }
 
 void SnakeApp::onExit()
@@ -118,10 +164,24 @@ void SnakeApp::onExit()
 
 void SnakeApp::onInput(const InputEvent &event)
 {
+    if (state_ == State::EnterName)
+    {
+        if (scores_.onEntryInput(event))
+        {
+            clearBankedScore();
+            state_ = State::Idle;
+        }
+        return;
+    }
+
     switch (event.type)
     {
     case InputType::Rotate:
-        if (state_ == State::Running)
+        if (state_ == State::Idle)
+        {
+            scores_.scroll(event.delta);
+        }
+        else if (state_ == State::Running)
         {
             // Queued, not applied immediately: one turn per step (FR-9).
             const int step = event.delta > 0 ? 1 : -1;
@@ -140,7 +200,6 @@ void SnakeApp::onInput(const InputEvent &event)
         switch (state_)
         {
         case State::Idle:
-        case State::Dead:
             startGame();
             break;
         case State::Running:
@@ -149,11 +208,26 @@ void SnakeApp::onInput(const InputEvent &event)
         case State::Paused:
             state_ = State::Running;
             break;
+        case State::Dead:
+            scores_.rewind();
+            state_ = State::Idle;
+            break;
+        case State::Dying:
+        case State::EnterName:
+            break;
         }
         break;
 
     case InputType::LongPress:
-        state_ = State::Idle;
+        if (state_ == State::Dying)
+        {
+            break;
+        }
+        if ((state_ != State::Running && state_ != State::Paused) || !askName())
+        {
+            scores_.rewind();
+            state_ = State::Idle;
+        }
         break;
 
     default:
@@ -165,9 +239,25 @@ void SnakeApp::update(Duration dt)
 {
     blink_ += dt.count();
 
+    if (state_ == State::Dying)
+    {
+        dying_ += dt.count();
+        if (dying_ >= kDyingSeconds && !askName())
+        {
+            state_ = State::Dead;
+        }
+        return;
+    }
+
     if (state_ != State::Running)
     {
         return;
+    }
+
+    gold_left_ -= dt.count();
+    if (gold_ && gold_left_ <= 0.0F)
+    {
+        gold_.reset();
     }
 
     step_timer_ += dt.count();
@@ -189,14 +279,17 @@ void SnakeApp::update(Duration dt)
 float SnakeApp::stepInterval() const
 {
     const float speed =
-        std::min(kMaxSpeed, kStartSpeed + static_cast<float>(score()) * kSpeedPerFood);
+        std::min(kMaxSpeed, kStartSpeed + static_cast<float>(eaten_) * kSpeedPerFood);
     return 1.0F / speed;
 }
 
 void SnakeApp::startGame()
 {
+    scores_.rewind();
     snake_.clear();
     turns_.clear();
+    walls_.clear();
+    gold_.reset();
 
     const int y = kRows / 2;
     for (int i = 0; i < kStartLength; ++i)
@@ -207,11 +300,12 @@ void SnakeApp::startGame()
     direction_ = Direction::Right;
     state_ = State::Running;
     step_timer_ = 0.0F;
+    dying_ = 0.0F;
     score_ = 0;
-    beat_high_score_ = false;
+    eaten_ = 0;
     placeFood();
 
-    logInfo("snake started, high score {}", high_score_);
+    logInfo("snake started");
 }
 
 void SnakeApp::turn(int detents)
@@ -230,13 +324,14 @@ void SnakeApp::step()
     }
 
     const Cell next = moved(snake_.front(), direction_);
-    if (!inside(next))
+    if (!inside(next) || isWall(next))
     {
         die();
         return;
     }
 
-    const bool grows = next.x == food_.x && next.y == food_.y;
+    const bool golden = gold_ && same(next, *gold_);
+    const bool grows = golden || same(next, food_);
     if (!grows)
     {
         snake_.pop_back(); // vacated before the collision check below
@@ -252,26 +347,63 @@ void SnakeApp::step()
 
     if (grows)
     {
-        ++score_;
-        placeFood();
-        recordScore();
+        eat(golden);
     }
+}
+
+void SnakeApp::eat(bool golden)
+{
+    score_ += golden ? kGoldPoints : 1;
+    ++eaten_;
+
+    if (golden)
+    {
+        gold_.reset();
+    }
+    else
+    {
+        placeFood();
+        maybePlaceGold();
+    }
+
+    if (eaten_ % kFoodPerWall == 0)
+    {
+        addWall();
+    }
+    bankScore();
 }
 
 void SnakeApp::die()
 {
-    state_ = State::Dead;
+    state_ = State::Dying;
+    dying_ = 0.0F;
     logInfo("snake over, score {}", score());
-    recordScore(); // usually a no-op; catches the board-is-full case
+}
+
+bool SnakeApp::askName()
+{
+    if (!scores_.board().qualifies(score_))
+    {
+        return false;
+    }
+    scores_.beginEntry(score_);
+    state_ = State::EnterName;
+    return true;
 }
 
 bool SnakeApp::occupied(Cell cell) const
 {
     return std::any_of(snake_.begin(), snake_.end(),
-                       [cell](const Cell &part) { return part.x == cell.x && part.y == cell.y; });
+                       [cell](const Cell &part) { return same(part, cell); });
 }
 
-void SnakeApp::placeFood()
+bool SnakeApp::isWall(Cell cell) const
+{
+    return std::any_of(walls_.begin(), walls_.end(),
+                       [cell](const Cell &part) { return same(part, cell); });
+}
+
+std::vector<SnakeApp::Cell> SnakeApp::freeCells() const
 {
     std::vector<Cell> free;
     free.reserve(static_cast<std::size_t>(kColumns * kRows));
@@ -281,13 +413,19 @@ void SnakeApp::placeFood()
         for (int x = 0; x < kColumns; ++x)
         {
             const Cell cell{x, y};
-            if (!occupied(cell))
+            if (!occupied(cell) && !isWall(cell) && !same(cell, food_) &&
+                !(gold_ && same(cell, *gold_)))
             {
                 free.push_back(cell);
             }
         }
     }
+    return free;
+}
 
+void SnakeApp::placeFood()
+{
+    const std::vector<Cell> free = freeCells();
     if (free.empty())
     {
         die();
@@ -298,52 +436,168 @@ void SnakeApp::placeFood()
     food_ = free[pick(random_)];
 }
 
-void SnakeApp::recordScore()
+void SnakeApp::maybePlaceGold()
 {
-    if (score() <= high_score_)
+    if (gold_ || std::uniform_int_distribution<int>(1, kGoldOneIn)(random_) != 1)
     {
         return;
     }
 
-    high_score_ = score();
-    beat_high_score_ = true;
+    const std::vector<Cell> free = freeCells();
+    if (!free.empty())
+    {
+        std::uniform_int_distribution<std::size_t> pick(0, free.size() - 1);
+        gold_ = free[pick(random_)];
+        gold_left_ = kGoldSeconds;
+    }
+}
 
-    // Written on the beat, not on game end (acceptance criterion 3).
-    scores_.setInt(kHighScoreKey, high_score_);
-    scores_.save();
+// Walls keep off the outer ring and never touch each other, not even at a corner.
+// So every free cell stays reachable, and there are no pockets to get caught in.
+bool SnakeApp::wallFits(Cell cell) const
+{
+    if (cell.x < 1 || cell.x > kColumns - 2 || cell.y < 1 || cell.y > kRows - 2)
+    {
+        return false;
+    }
+    if (occupied(cell) || same(cell, food_) || (gold_ && same(cell, *gold_)))
+    {
+        return false;
+    }
+    const Cell at = head();
+    if (std::abs(cell.x - at.x) + std::abs(cell.y - at.y) < kWallClearance)
+    {
+        return false;
+    }
+    return std::none_of(
+        walls_.begin(), walls_.end(), [cell](const Cell &wall)
+        { return std::abs(wall.x - cell.x) <= 1 && std::abs(wall.y - cell.y) <= 1; });
+}
+
+void SnakeApp::addWall()
+{
+    std::vector<std::pair<Cell, Cell>> spots;
+    for (int y = 0; y < kRows; ++y)
+    {
+        for (int x = 0; x < kColumns; ++x)
+        {
+            const Cell cell{x, y};
+            for (const Cell other : {Cell{x + 1, y}, Cell{x, y + 1}})
+            {
+                if (wallFits(cell) && wallFits(other))
+                {
+                    spots.emplace_back(cell, other);
+                }
+            }
+        }
+    }
+
+    if (!spots.empty()) // a full field simply stops growing walls
+    {
+        std::uniform_int_distribution<std::size_t> pick(0, spots.size() - 1);
+        const auto &[first, second] = spots[pick(random_)];
+        walls_.push_back(first);
+        walls_.push_back(second);
+    }
+}
+
+void SnakeApp::bankScore()
+{
+    if (scores_.board().qualifies(score_))
+    {
+        saved_.setInt(kBankedKey, score_);
+        saved_.save();
+    }
+}
+
+void SnakeApp::clearBankedScore()
+{
+    if (saved_.getInt(kBankedKey, 0) != 0)
+    {
+        saved_.setInt(kBankedKey, 0);
+        saved_.save();
+    }
+}
+
+void SnakeApp::renderCrumble(Surface &surface) const
+{
+    const auto length = static_cast<float>(snake_.size());
+    for (std::size_t i = 0; i < snake_.size(); ++i)
+    {
+        const Color color = i == 0 ? kFood : kBody;
+        const float start = kCrashSeconds + kCrumbleSeconds * static_cast<float>(i) / length;
+
+        for (int dy = 0; dy < kCell; ++dy)
+        {
+            for (int dx = 0; dx < kCell; ++dx)
+            {
+                const int x = kBorderX + snake_[i].x * kCell + dx;
+                const int y = kBorderY + snake_[i].y * kCell + dy;
+                const float age = dying_ - start - scatter(x, y) * kLoosenSeconds;
+
+                if (age < 0.0F)
+                {
+                    surface.setPixel(x, y, color);
+                }
+                else if (age < kFallSeconds)
+                {
+                    const int fallen = static_cast<int>(kGravity * age * age / 2.0F);
+                    surface.setPixel(x, y + fallen, dimmed(color, 1.0F - age / kFallSeconds));
+                }
+            }
+        }
+    }
 }
 
 void SnakeApp::render(Surface &surface)
 {
-    drawFrame(surface);
-
     switch (state_)
     {
     case State::Idle:
-        drawCentered(surface, 5, "SNAKE", kTitle, 2);
-        drawCentered(surface, 22, "HI " + std::to_string(high_score_), kLabel);
+        scores_.renderBoard(surface);
+        return;
+
+    case State::EnterName:
+        scores_.renderEntry(surface, blink_, "GAME OVER");
         return;
 
     case State::Dead:
     {
-        const bool record_on =
-            !beat_high_score_ || std::fmod(blink_, kBlinkPeriod) < kBlinkPeriod / 2.0F;
-        if (record_on)
-        {
-            drawCentered(surface, 3, beat_high_score_ ? "NEW BEST" : "GAME OVER",
-                         beat_high_score_ ? kRecord : kLabel);
-        }
+        const auto &entries = scores_.board().entries();
+        const int best = entries.empty() ? 0 : entries.front().score;
+        drawFrame(surface);
+        drawCentered(surface, 3, "GAME OVER", kLabel);
         drawCentered(surface, 12, std::to_string(score()), kScore, 2);
-        drawCentered(surface, 25, "HI " + std::to_string(high_score_), kLabel);
+        drawCentered(surface, 25, "HI " + std::to_string(best), kLabel);
         return;
     }
 
     case State::Running:
     case State::Paused:
+    case State::Dying:
         break;
     }
 
+    drawFrame(surface);
+
+    for (const Cell &wall : walls_)
+    {
+        drawCell(surface, wall, kWall);
+    }
+
     drawCell(surface, food_, kFood);
+
+    if (gold_ && (gold_left_ > kGoldWarnSeconds ||
+                  std::fmod(blink_, kGoldBlinkPeriod) < kGoldBlinkPeriod / 2.0F))
+    {
+        drawCell(surface, *gold_, kGold);
+    }
+
+    if (state_ == State::Dying)
+    {
+        renderCrumble(surface);
+        return;
+    }
 
     for (std::size_t i = 0; i < snake_.size(); ++i)
     {
@@ -354,7 +608,7 @@ void SnakeApp::render(Surface &surface)
     {
         for (int y = 11; y < 21; ++y)
         {
-            for (int x = 1; x < surface.width() - 1; ++x)
+            for (int x = kBorderX; x < surface.width() - kBorderX; ++x)
             {
                 surface.setPixel(x, y, Color::black());
             }

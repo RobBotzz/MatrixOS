@@ -10,7 +10,6 @@
 #include "gfx/surface.h"
 #include "os/state.h"
 
-#include <algorithm>
 #include <cmath>
 
 namespace matrixos
@@ -19,7 +18,6 @@ namespace
 {
 
 constexpr std::string_view kSection = "pokemon";
-constexpr std::string_view kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
 
 constexpr Color kCore{255, 255, 255};
 constexpr Color kPale{170, 240, 240};
@@ -57,10 +55,6 @@ constexpr double kBurstShift = 4.0; ///< offsets the pull, so the silhouette sit
 
 constexpr float kFlashSeconds = 0.15F;
 constexpr float kPollInterval = 0.25F;
-constexpr float kBlinkSeconds = 0.4F;
-
-constexpr int kRowHeight = 8;
-constexpr std::size_t kRows = 3;
 
 Color mix(Color a, Color b, float amount)
 {
@@ -87,7 +81,7 @@ void drawOutlined(Surface &surface, int x, int y, std::string_view text, int sca
 } // namespace
 
 PokemonApp::PokemonApp(PokemonService &pokemon, StateStore &store)
-    : pokemon_(pokemon), scoreboard_(store.section(kSection))
+    : pokemon_(pokemon), scores_(store.section(kSection))
 {
     // Double, not float: atan2f carries a symbol version newer than the device's
     // glibc, and the binary would not load at all.
@@ -129,7 +123,7 @@ void PokemonApp::onExit()
 void PokemonApp::start()
 {
     score_ = 0;
-    highlight_.reset();
+    scores_.rewind();
     nextRound();
 }
 
@@ -154,34 +148,14 @@ void PokemonApp::answer()
 void PokemonApp::endRun()
 {
     round_.reset();
-    if (!scoreboard_.qualifies(score_))
+    if (!scores_.board().qualifies(score_))
     {
-        scroll_ = 0;
+        scores_.rewind();
         screen_ = Screen::Scores;
         return;
     }
-    entry_ = scoreboard_.lastName();
-    entry_.resize(Scoreboard::kNameLength, ' ');
-    cursor_ = 0;
+    scores_.beginEntry(score_);
     screen_ = Screen::EnterName;
-}
-
-void PokemonApp::finishEntry()
-{
-    std::string name = entry_;
-    name.erase(name.find_last_not_of(' ') + 1);
-    const std::size_t place = scoreboard_.add(name.empty() ? "???" : name, score_);
-    highlight_ = place;
-    scroll_ = place < kRows ? 0 : place - (kRows - 1);
-    screen_ = Screen::Scores;
-}
-
-void PokemonApp::turnLetter(int delta)
-{
-    const auto size = static_cast<int>(kAlphabet.size());
-    const auto at = kAlphabet.find(entry_[cursor_]);
-    const int index = at == std::string_view::npos ? 0 : static_cast<int>(at);
-    entry_[cursor_] = kAlphabet[static_cast<std::size_t>(((index + delta) % size + size) % size)];
 }
 
 void PokemonApp::onInput(const InputEvent &event)
@@ -198,10 +172,7 @@ void PokemonApp::onInput(const InputEvent &event)
         }
         else if (rotate)
         {
-            const auto entries = scoreboard_.entries().size();
-            const int last = entries > kRows ? static_cast<int>(entries - kRows) : 0;
-            scroll_ = static_cast<std::size_t>(
-                std::clamp(static_cast<int>(scroll_) + event.delta, 0, last));
+            scores_.scroll(event.delta);
         }
         break;
 
@@ -228,18 +199,9 @@ void PokemonApp::onInput(const InputEvent &event)
         break;
 
     case Screen::EnterName:
-        if (rotate)
+        if (scores_.onEntryInput(event))
         {
-            turnLetter(event.delta);
-        }
-        else if (event.type == InputType::LongPress ||
-                 (press && cursor_ + 1 == Scoreboard::kNameLength))
-        {
-            finishEntry();
-        }
-        else if (press)
-        {
-            ++cursor_;
+            screen_ = Screen::Scores;
         }
         break;
     }
@@ -358,59 +320,15 @@ void PokemonApp::renderRound(Surface &surface) const
     }
 }
 
-void PokemonApp::renderScores(Surface &surface) const
-{
-    drawTextCentered(surface, 1, "HIGHSCORE", kYellow);
-
-    const auto &entries = scoreboard_.entries();
-    if (entries.empty())
-    {
-        drawTextCentered(surface, 12, "NO SCORES", kDim);
-        drawTextCentered(surface, 22, "PRESS", kText);
-        return;
-    }
-
-    for (std::size_t row = 0; row < kRows && scroll_ + row < entries.size(); ++row)
-    {
-        const std::size_t place = scroll_ + row;
-        const int y = kRowHeight * static_cast<int>(row + 1) + 1;
-        const Color colour = highlight_ == place ? kYellow : kText;
-        const std::string rank = std::to_string(place + 1);
-        const std::string score = std::to_string(entries[place].score);
-
-        drawText(surface, rightAlignedTextX(9, rank), y, rank, kDim);
-        drawText(surface, 13, y, entries[place].name, colour);
-        drawText(surface, rightAlignedTextX(kPanelWidth - 2, score), y, score, colour);
-    }
-}
-
-void PokemonApp::renderEntry(Surface &surface) const
-{
-    drawTextCentered(surface, 1, "GAME OVER", kWrong);
-    drawTextCentered(surface, 10, "SCORE " + std::to_string(score_), kYellow);
-
-    const int left = centredTextX(kPanelWidth, entry_);
-    drawText(surface, left, 21, entry_, kText);
-
-    if (static_cast<int>(time_ / kBlinkSeconds) % 2 == 0)
-    {
-        const int x = left + static_cast<int>(cursor_) * kGlyphAdvance;
-        for (int dx = 0; dx < kGlyphWidth; ++dx)
-        {
-            surface.setPixel(x + dx, 29, kYellow);
-        }
-    }
-}
-
 void PokemonApp::render(Surface &surface)
 {
     switch (screen_)
     {
     case Screen::Scores:
-        renderScores(surface);
+        scores_.renderBoard(surface);
         return;
     case Screen::EnterName:
-        renderEntry(surface);
+        scores_.renderEntry(surface, time_, "GAME OVER");
         return;
     case Screen::Guess:
     case Screen::Result:

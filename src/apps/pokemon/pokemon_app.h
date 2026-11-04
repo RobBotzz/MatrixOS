@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "apps/pokemon/scoreboard.h"
+#include "apps/scores/score_screens.h"
 #include "os/app.h"
 #include "os/pokemon.h"
 
@@ -49,36 +49,27 @@ public:
     const std::optional<PokemonRound> &round() const { return round_; }
     int selected() const { return selected_; }
     int score() const { return score_; }
-    const std::string &entry() const { return entry_; }
-    std::size_t cursor() const { return cursor_; }
-    const Scoreboard &scoreboard() const { return scoreboard_; }
+    const std::string &entry() const { return scores_.entry(); }
+    std::size_t cursor() const { return scores_.cursor(); }
+    const Scoreboard &scoreboard() const { return scores_.board(); }
 
 private:
     void start();
     void nextRound();
     void answer();
     void endRun();
-    void finishEntry();
-    void turnLetter(int delta);
 
     void renderBurst(Surface &surface) const;
     void renderRound(Surface &surface) const;
-    void renderScores(Surface &surface) const;
-    void renderEntry(Surface &surface) const;
 
     PokemonService &pokemon_;
-    Scoreboard scoreboard_;
+    ScoreScreens scores_;
     Screen screen_ = Screen::Scores;
 
     std::optional<PokemonRound> round_;
     int selected_ = 0;
     int score_ = 0;
     bool right_ = false;
-
-    std::string entry_;
-    std::size_t cursor_ = 0;
-    std::size_t scroll_ = 0;
-    std::optional<std::size_t> highlight_;
 
     float time_ = 0.0F;
     float since_answer_ = 0.0F;
