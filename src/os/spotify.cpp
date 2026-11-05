@@ -58,6 +58,18 @@ std::string artistNames(const nlohmann::json &item)
     return names;
 }
 
+/// Spotify lists pictures largest first. A playlist without one has `null`.
+std::string smallestImage(const nlohmann::json &object)
+{
+    const auto images = object.find("images");
+    if (images == object.end() || !images->is_array() || images->empty() ||
+        !images->back().is_object())
+    {
+        return {};
+    }
+    return text(images->back(), "url");
+}
+
 const char *listPath(SpotifyList list)
 {
     switch (list)
@@ -114,10 +126,9 @@ std::optional<Track> parsePlayback(std::string_view json)
         }
 
         // The smallest image is enough for 32x32; Spotify lists them largest first.
-        if (item.contains("album") && item["album"].contains("images") &&
-            item["album"]["images"].is_array() && !item["album"]["images"].empty())
+        if (item.contains("album") && item["album"].is_object())
         {
-            track.cover_url = item["album"]["images"].back().value("url", "");
+            track.cover_url = smallestImage(item["album"]);
         }
         return track;
     }
@@ -150,19 +161,14 @@ std::optional<std::vector<SpotifyItem>> parseItems(SpotifyList list, std::string
             continue;
         }
 
-        std::string subtitle;
-        if (list == SpotifyList::Playlists)
+        const bool song = list == SpotifyList::Recent || list == SpotifyList::TopTracks;
+        std::string image = smallestImage(item);
+        if (song && item.contains("album") && item["album"].is_object())
         {
-            if (item.contains("owner") && item["owner"].is_object())
-            {
-                subtitle = text(item["owner"], "display_name");
-            }
+            image = smallestImage(item["album"]);
         }
-        else if (list != SpotifyList::TopArtists)
-        {
-            subtitle = artistNames(item);
-        }
-        items.push_back({text(item, "name"), std::move(subtitle), text(item, "uri")});
+        items.push_back({text(item, "name"), song ? artistNames(item) : std::string(),
+                         text(item, "uri"), std::move(image)});
     }
     return items;
 }
@@ -296,7 +302,17 @@ void SpotifyService::begin()
 SpotifySnapshot SpotifyService::snapshot() const
 {
     std::lock_guard lock(mutex_);
-    return {link_, track_, cover_, reachable_, revision_, list_state_, list_, start_};
+    SpotifySnapshot snapshot{link_,       track_, cover_, reachable_,  revision_,
+                             list_state_, list_,  start_, list_index_, nullptr};
+    if (list_ && list_index_ < list_->size())
+    {
+        const auto found = list_covers_.find((*list_)[list_index_].image);
+        if (found != list_covers_.end())
+        {
+            snapshot.list_cover = found->second;
+        }
+    }
+    return snapshot;
 }
 
 std::string SpotifyService::clientId() const
@@ -373,6 +389,7 @@ void SpotifyService::unlink()
     cover_.reset();
     cover_url_.clear();
     list_.reset();
+    list_covers_.clear();
     list_state_ = SpotifyListState::Idle;
     start_ = SpotifyStart::Idle;
     link_ = SpotifyLink::NotConnected;
@@ -462,6 +479,8 @@ void SpotifyService::loadList(SpotifyList list)
         list_kind_ = list;
         list_state_ = SpotifyListState::Loading;
         list_.reset();
+        list_index_ = 0;
+        list_covers_.clear();
     }
     post([this, list] { fetchList(list); });
 }
@@ -482,21 +501,53 @@ void SpotifyService::fetchList(SpotifyList list)
         items = parseItems(list, result->body);
     }
 
+    {
+        std::lock_guard lock(mutex_);
+        if (list_kind_ != list)
+        {
+            return;
+        }
+        if (items)
+        {
+            list_ = std::make_shared<const std::vector<SpotifyItem>>(std::move(*items));
+            list_state_ = SpotifyListState::Ready;
+        }
+        else
+        {
+            const bool forbidden = result && result->status == 403;
+            list_state_ = forbidden ? SpotifyListState::SignIn : SpotifyListState::Failed;
+        }
+    }
+    fetchItemCover();
+}
+
+void SpotifyService::showItem(std::size_t index)
+{
+    {
+        std::lock_guard lock(mutex_);
+        list_index_ = index;
+    }
+    post([this] { fetchItemCover(); });
+}
+
+void SpotifyService::fetchItemCover()
+{
+    std::string url;
+    {
+        std::lock_guard lock(mutex_);
+        if (!list_ || list_index_ >= list_->size())
+        {
+            return;
+        }
+        url = (*list_)[list_index_].image;
+        if (url.empty() || list_covers_.contains(url))
+        {
+            return;
+        }
+    }
+    auto cover = fetchCover(url);
     std::lock_guard lock(mutex_);
-    if (list_kind_ != list)
-    {
-        return;
-    }
-    if (items)
-    {
-        list_ = std::make_shared<const std::vector<SpotifyItem>>(std::move(*items));
-        list_state_ = SpotifyListState::Ready;
-    }
-    else
-    {
-        const bool forbidden = result && result->status == 403;
-        list_state_ = forbidden ? SpotifyListState::SignIn : SpotifyListState::Failed;
-    }
+    list_covers_[url] = std::move(cover);
 }
 
 void SpotifyService::play(std::size_t index)
@@ -848,19 +899,24 @@ bool SpotifyService::poll()
     return true;
 }
 
-void SpotifyService::updateCover(const std::string &url)
+std::shared_ptr<const std::vector<std::uint8_t>> SpotifyService::fetchCover(const std::string &url)
 {
     if (url.rfind("https://", 0) != 0)
     {
-        return;
+        return nullptr;
     }
     const std::optional<std::string> bytes = get_(url);
     std::optional<std::vector<std::uint8_t>> cover =
         bytes ? decodeCover(*bytes, kCoverSize) : std::nullopt;
+    return cover ? std::make_shared<const std::vector<std::uint8_t>>(std::move(*cover)) : nullptr;
+}
 
+void SpotifyService::updateCover(const std::string &url)
+{
+    auto cover = fetchCover(url);
     std::lock_guard lock(mutex_);
     cover_url_ = url;
-    cover_ = cover ? std::make_shared<const std::vector<std::uint8_t>>(std::move(*cover)) : nullptr;
+    cover_ = std::move(cover);
 }
 
 void SpotifyService::command(std::string method, std::string path)

@@ -14,8 +14,8 @@ namespace matrixos
 
 /// What the owner's Spotify is playing (v0.7, ADR-0019). Press plays or pauses,
 /// double-press skips, a long press goes back, rotating sets the volume. While
-/// nothing plays it browses playlists, history and top lists instead; a long
-/// press opens that from a paused track as well.
+/// nothing plays it browses playlists, history and top lists instead; rotating
+/// opens that from a paused track as well.
 class SpotifyApp : public App
 {
 public:

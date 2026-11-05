@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -64,8 +65,9 @@ enum class SpotifyList
 struct SpotifyItem
 {
     std::string title;
-    std::string subtitle; ///< artist or playlist owner, empty for an artist
+    std::string subtitle; ///< the artist of a song, otherwise empty
     std::string uri;
+    std::string image; ///< the smallest picture Spotify has, may be empty
 };
 
 /// The answer for `list`. Entries without a URI cannot be played and are left out.
@@ -122,6 +124,8 @@ struct SpotifySnapshot
     SpotifyListState list_state = SpotifyListState::Idle;
     std::shared_ptr<const std::vector<SpotifyItem>> list; ///< may be null
     SpotifyStart start = SpotifyStart::Idle;
+    std::size_t list_index = 0; ///< the entry `list_cover` belongs to
+    std::shared_ptr<const std::vector<std::uint8_t>> list_cover; ///< 32x32 RGB, may be null
 };
 
 /// The owner's Spotify, through the owner's own Spotify app (ADR-0019). The
@@ -183,6 +187,10 @@ public:
     /// Fetches `list` for the snapshot, replacing the one held.
     void loadList(SpotifyList list);
 
+    /// The entry on screen. Only its picture is fetched, so scrolling past
+    /// entries costs no requests.
+    void showItem(std::size_t index);
+
     /// Starts entry `index` of the loaded list on a device of the account.
     void play(std::size_t index);
     void clearStart();
@@ -202,6 +210,8 @@ private:
                                   const std::string &json = {});
     void command(std::string method, std::string path);
     void fetchList(SpotifyList list);
+    void fetchItemCover();
+    std::shared_ptr<const std::vector<std::uint8_t>> fetchCover(const std::string &url);
     void startPlayback(SpotifyList list, const std::vector<SpotifyItem> &items, std::size_t index);
     void finishStart(SpotifyStart result);
     void updateCover(const std::string &url);
@@ -225,6 +235,8 @@ private:
     SpotifyList list_kind_ = SpotifyList::Playlists;
     SpotifyListState list_state_ = SpotifyListState::Idle;
     std::shared_ptr<const std::vector<SpotifyItem>> list_;
+    std::size_t list_index_ = 0;
+    std::map<std::string, std::shared_ptr<const std::vector<std::uint8_t>>> list_covers_;
     SpotifyStart start_ = SpotifyStart::Idle;
     std::chrono::steady_clock::time_point start_deadline_{};
     bool reachable_ = true;

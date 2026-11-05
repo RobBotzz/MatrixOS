@@ -96,8 +96,8 @@ which the unit cannot change.
 
 With nothing playing the app offers four modes: playlists, recently played, top songs and top
 artists. Rotate scrolls, press opens or starts, a long press goes back. A paused track still answers
-to a press, so the menu does not replace it; there a long press opens the menu instead of going
-back a track, which is of little use while paused.
+to a press, so the menu does not replace it; there rotating opens the menu instead of changing the
+volume of something silent.
 
 - **Starting needs a device.** With nothing playing Spotify has no active device, so a plain play
   command fails. The unit asks for the account's devices and addresses the active one, otherwise
@@ -110,4 +110,7 @@ back a track, which is of little use while paused.
   answers its lists with 403, which the panel shows as "sign in again".
 - Each list holds Spotify's maximum of 50 entries in one request, without paging. All of these
   endpoints remain available to Development Mode apps; audio features and recommendations do not.
+- **Entries look like the player:** picture on the left, name on the right, with the artist for
+  songs only. Only the picture of the entry on screen is fetched, so scrolling past entries costs
+  no requests. Pictures stay cached until the next list opens: at most 50, of 3 KB each.
 - Lists load only when opened, so the app stays silent off screen as before.

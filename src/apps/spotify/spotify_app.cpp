@@ -36,9 +36,6 @@ constexpr int kVolumeStep = 2;
 constexpr float kVolumeSettle = 0.4F;
 constexpr float kVolumeShown = 1.5F;
 
-constexpr int kListLeft = 1;
-constexpr int kListWidth = 62;
-
 struct Mode
 {
     std::string_view top;
@@ -68,9 +65,9 @@ std::string panelText(const std::string &text)
 
 /// A line that fits stays put; one that does not slides left and back, pausing
 /// at both ends.
-int scrollOffset(int width, int room, float time)
+int scrollOffset(int width, float time)
 {
-    const int overflow = width - room;
+    const int overflow = width - kTextWidth;
     if (overflow <= 0)
     {
         return 0;
@@ -96,13 +93,12 @@ int scrollOffset(int width, int room, float time)
     return overflow - static_cast<int>(t * kScrollSpeed);
 }
 
-void drawClipped(Surface &surface, int left, int room, int y, const std::string &text, Color color,
-                 float time)
+void drawClipped(Surface &surface, int y, const std::string &text, Color color, float time)
 {
     Surface line(textWidth(text) + 1, kGlyphHeight);
     drawText(line, 0, 0, text, color);
-    const int offset = scrollOffset(textWidth(text), room, time);
-    for (int x = 0; x < room; ++x)
+    const int offset = scrollOffset(textWidth(text), time);
+    for (int x = 0; x < kTextWidth; ++x)
     {
         for (int row = 0; row < kGlyphHeight; ++row)
         {
@@ -112,7 +108,7 @@ void drawClipped(Surface &surface, int left, int room, int y, const std::string 
                 const Color pixel = line.pixel(source, row);
                 if (!(pixel == Color::black()))
                 {
-                    surface.setPixel(left + x, y + row, pixel);
+                    surface.setPixel(kTextLeft + x, y + row, pixel);
                 }
             }
         }
@@ -128,6 +124,30 @@ void fill(Surface &surface, int x, int y, int width, int height, Color color)
             surface.setPixel(x + dx, y + dy, color);
         }
     }
+}
+
+void drawCover(Surface &surface, const std::vector<std::uint8_t> *rgb)
+{
+    if (rgb == nullptr || rgb->size() != static_cast<std::size_t>(kCoverSize * kCoverSize * 3))
+    {
+        fill(surface, 0, 0, kCoverSize, kCoverSize, kNoCover);
+        return;
+    }
+    std::size_t at = 0;
+    for (int y = 0; y < kCoverSize; ++y)
+    {
+        for (int x = 0; x < kCoverSize; ++x, at += 3)
+        {
+            surface.setPixel(x, y, {(*rgb)[at], (*rgb)[at + 1], (*rgb)[at + 2]});
+        }
+    }
+}
+
+void drawBar(Surface &surface, float fraction)
+{
+    const int width = kTextWidth - 1;
+    fill(surface, kTextLeft, 29, width, 2, kTrack);
+    fill(surface, kTextLeft, 29, static_cast<int>(fraction * static_cast<float>(width)), 2, kGreen);
 }
 
 } // namespace
@@ -183,6 +203,11 @@ void SpotifyApp::onBrowseInput(const InputEvent &event)
             int &selected = in_list_ ? item_ : mode_;
             selected = ((selected + event.delta) % count + count) % count;
             scroll_ = 0.0F;
+            if (in_list_)
+            {
+                spotify_.showItem(static_cast<std::size_t>(item_));
+                since_read_ = kReadInterval;
+            }
         }
         break;
     case InputType::Press:
@@ -231,23 +256,22 @@ void SpotifyApp::onInput(const InputEvent &event)
     {
     case InputType::Press:
         spotify_.togglePlay();
+        since_read_ = kReadInterval; // a turn right after pausing must already count as paused
         break;
     case InputType::DoublePress:
         spotify_.next();
         break;
     case InputType::LongPress:
-        if (snapshot_.track->playing)
-        {
-            spotify_.previous();
-        }
-        else
-        {
-            browsing_paused_ = true;
-            in_list_ = false;
-        }
+        spotify_.previous();
         break;
     case InputType::Rotate:
     {
+        if (!snapshot_.track->playing)
+        {
+            browsing_paused_ = true;
+            in_list_ = false;
+            break;
+        }
         const int base = pending_volume_ >= 0
                              ? pending_volume_
                              : (snapshot_.track->volume >= 0 ? snapshot_.track->volume : 50);
@@ -389,35 +413,26 @@ void SpotifyApp::renderList(Surface &surface) const
     }
 
     const int count = static_cast<int>(snapshot_.list->size());
-    const SpotifyItem &item =
-        (*snapshot_.list)[static_cast<std::size_t>(std::min(item_, count - 1))];
+    const int index = std::min(item_, count - 1);
+    const SpotifyItem &item = (*snapshot_.list)[static_cast<std::size_t>(index)];
+    const bool current = snapshot_.list_index == static_cast<std::size_t>(index);
+    drawCover(surface, current ? snapshot_.list_cover.get() : nullptr);
+
     const std::string title = panelText(item.title);
-    drawClipped(surface, kListLeft, kListWidth, 3, title.empty() ? "?" : title, kText, scroll_);
-    drawClipped(surface, kListLeft, kListWidth, 13, panelText(item.subtitle), kLabel, scroll_);
-    drawTextCentered(surface, 24, std::to_string(item_ + 1) + "/" + std::to_string(count), kGreen);
+    const std::string subtitle = panelText(item.subtitle);
+    drawClipped(surface, subtitle.empty() ? 7 : 2, title.empty() ? "?" : title, kText, scroll_);
+    drawClipped(surface, 12, subtitle, kLabel, scroll_);
+
+    drawText(surface, kTextLeft, 21, std::to_string(index + 1) + "/" + std::to_string(count),
+             kLabel);
+    drawBar(surface, static_cast<float>(index + 1) / static_cast<float>(count));
 }
 
 void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
 {
-    if (snapshot_.cover &&
-        snapshot_.cover->size() == static_cast<std::size_t>(kCoverSize * kCoverSize * 3))
-    {
-        const auto &rgb = *snapshot_.cover;
-        std::size_t at = 0;
-        for (int y = 0; y < kCoverSize; ++y)
-        {
-            for (int x = 0; x < kCoverSize; ++x, at += 3)
-            {
-                surface.setPixel(x, y, {rgb[at], rgb[at + 1], rgb[at + 2]});
-            }
-        }
-    }
-    else
-    {
-        fill(surface, 0, 0, kCoverSize, kCoverSize, kNoCover);
-    }
+    drawCover(surface, snapshot_.cover.get());
 
-    drawClipped(surface, kTextLeft, kTextWidth, 2, panelText(track.title), kText, scroll_);
+    drawClipped(surface, 2, panelText(track.title), kText, scroll_);
 
     const int volume = pending_volume_ >= 0 ? pending_volume_ : track.volume;
     if (volume_shown_ > 0.0F && volume >= 0)
@@ -426,7 +441,7 @@ void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
     }
     else
     {
-        drawClipped(surface, kTextLeft, kTextWidth, 12, panelText(track.artist), kLabel, scroll_);
+        drawClipped(surface, 12, panelText(track.artist), kLabel, scroll_);
     }
 
     // Paused: two bars. Playing: a triangle.
@@ -443,16 +458,14 @@ void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
         fill(surface, kTextLeft + 3, 21, 1, 5, kText);
     }
 
-    const int width = kTextWidth - 1;
-    fill(surface, kTextLeft, 29, width, 2, kTrack);
+    float progress = 0.0F;
     if (track.duration_ms > 0)
     {
         const float elapsed = track.playing ? since_revision_ * 1000.0F : 0.0F;
-        const float progress = std::min(1.0F, (static_cast<float>(track.progress_ms) + elapsed) /
-                                                  static_cast<float>(track.duration_ms));
-        fill(surface, kTextLeft, 29, static_cast<int>(progress * static_cast<float>(width)), 2,
-             kGreen);
+        progress = std::min(1.0F, (static_cast<float>(track.progress_ms) + elapsed) /
+                                      static_cast<float>(track.duration_ms));
     }
+    drawBar(surface, progress);
 }
 
 void SpotifyApp::renderMessage(Surface &surface, std::string_view top,

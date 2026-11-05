@@ -39,15 +39,27 @@ constexpr const char *kPlaying = R"({
   "album": {"images": [{"url": "https://i.scdn.co/image/big", "width": 640},
                        {"url": "https://i.scdn.co/image/small", "width": 64}]}}})";
 
+/// A 64x64 solid red JPEG, made with ffmpeg.
+constexpr const char *kRedJpeg =
+    "_9j_4AAQSkZJRgABAgAAAQABAAD__gAPTGF2YzYxLjMuMTAwAP_bAEMACAoKCwoLDQ0NDQ0NEA8QEBAQ"
+    "EBAQEBAQEBISEhUVFRISEhAQEhIUFBUVFxcXFRUVFRcXGRkZHh4cHCMjJCsrM__EAE0AAQEAAAAAAAAA"
+    "AAAAAAAAAAAGAQEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAA"
+    "AAAAAAD_wAARCABAAEADASIAAhEAAxEA_9oADAMBAAIRAxEAPwCLASjfwAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAH_2Q";
+
 constexpr const char *kPlaylists = R"({"items": [
- {"name": "Road", "uri": "spotify:playlist:a", "owner": {"display_name": "Robin"}},
+ {"name": "Road", "uri": "spotify:playlist:a", "owner": {"display_name": "Robin"},
+  "images": [{"url": "https://i.scdn.co/image/road-big"}, {"url": "https://i.scdn.co/image/road"}]},
  null,
- {"name": "Gym", "uri": "spotify:playlist:b", "owner": {"display_name": "Sam"}}]})";
+ {"name": "Gym", "uri": "spotify:playlist:b", "owner": {"display_name": "Sam"}, "images": null}]})";
 
 constexpr const char *kTopTracks = R"({"items": [
- {"name": "A", "uri": "spotify:track:a", "artists": [{"name": "One"}]},
- {"name": "B", "uri": "spotify:track:b", "artists": [{"name": "One"}]},
- {"name": "C", "uri": "spotify:track:c", "artists": [{"name": "Two"}]}]})";
+ {"name": "A", "uri": "spotify:track:a", "artists": [{"name": "One"}],
+  "album": {"images": [{"url": "https://i.scdn.co/image/a"}]}},
+ {"name": "B", "uri": "spotify:track:b", "artists": [{"name": "One"}],
+  "album": {"images": [{"url": "https://i.scdn.co/image/b"}]}},
+ {"name": "C", "uri": "spotify:track:c", "artists": [{"name": "Two"}],
+  "album": {"images": [{"url": "https://i.scdn.co/image/c"}]}}]})";
 
 constexpr const char *kDevices = R"({"devices": [{"id": "dev", "is_active": false}]})";
 
@@ -70,6 +82,7 @@ std::string hex(const std::array<std::uint8_t, 32> &digest)
 struct FakeSpotify
 {
     std::vector<HttpCall> calls;
+    std::vector<std::string> pictures;
     std::function<std::optional<HttpResult>(const HttpCall &)> respond;
 
     SpotifyService::Call call()
@@ -78,6 +91,15 @@ struct FakeSpotify
         {
             calls.push_back(request);
             return respond(request);
+        };
+    }
+
+    SpotifyService::Get get()
+    {
+        return [this](const std::string &url)
+        {
+            pictures.push_back(url);
+            return base64UrlDecode(kRedJpeg);
         };
     }
 
@@ -123,8 +145,7 @@ linked(StateStore &store, FakeSpotify &fake,
         }
         return player(request);
     };
-    auto spotify =
-        std::make_unique<SpotifyService>(store, fake.call(), FakeSpotify::noCover(), timing);
+    auto spotify = std::make_unique<SpotifyService>(store, fake.call(), fake.get(), timing);
     const std::string url = spotify->startLink(kClientId, kOrigin);
     const std::string state = url.substr(url.find("state=") + 6);
     REQUIRE(spotify->finishLink("CODE", urlDecode(state)));
@@ -504,22 +525,28 @@ TEST_CASE("each list parses into playable entries")
     REQUIRE(playlists);
     REQUIRE(playlists->size() == 2);
     CHECK((*playlists)[0].title == "Road");
-    CHECK((*playlists)[0].subtitle == "Robin");
+    CHECK((*playlists)[0].subtitle.empty());
+    CHECK((*playlists)[0].image == "https://i.scdn.co/image/road");
     CHECK((*playlists)[1].uri == "spotify:playlist:b");
+    CHECK((*playlists)[1].image.empty());
 
     const auto recent = parseItems(SpotifyList::Recent, R"({"items": [
         {"track": {"name": "Song", "uri": "spotify:track:a",
-                   "artists": [{"name": "One"}, {"name": "Two"}]}},
+                   "artists": [{"name": "One"}, {"name": "Two"}],
+                   "album": {"images": [{"url": "https://i.scdn.co/image/album"}]}}},
         {"track": null}]})");
     REQUIRE(recent);
     REQUIRE(recent->size() == 1);
     CHECK((*recent)[0].subtitle == "One, Two");
+    CHECK((*recent)[0].image == "https://i.scdn.co/image/album");
 
-    const auto artists = parseItems(SpotifyList::TopArtists,
-                                    R"({"items": [{"name": "One", "uri": "spotify:artist:a"}]})");
+    const auto artists = parseItems(SpotifyList::TopArtists, R"({"items": [
+        {"name": "One", "uri": "spotify:artist:a",
+         "images": [{"url": "https://i.scdn.co/image/one"}]}]})");
     REQUIRE(artists);
     REQUIRE(artists->size() == 1);
     CHECK((*artists)[0].subtitle.empty());
+    CHECK((*artists)[0].image == "https://i.scdn.co/image/one");
 
     CHECK_FALSE(parseItems(SpotifyList::TopTracks, "junk"));
 }
@@ -678,7 +705,7 @@ TEST_CASE("a link without the new scopes is told to sign in again")
     CHECK(spotify->snapshot().list_state == SpotifyListState::SignIn);
 }
 
-TEST_CASE("a long press browses from a paused track and comes back")
+TEST_CASE("a turn on a paused track opens the menu instead of changing the volume")
 {
     StateStore store = StateStore::inMemory();
     FakeSpotify fake;
@@ -700,13 +727,92 @@ TEST_CASE("a long press browses from a paused track and comes back")
     REQUIRE_FALSE(app.browsing());
 
     app.onInput({InputType::LongPress, 0});
-    CHECK(app.browsing());
     spotify->step();
-    CHECK_FALSE(fake.called("POST", "/me/player/previous"));
+    CHECK(fake.called("POST", "/me/player/previous"));
+    CHECK_FALSE(app.browsing());
+
+    app.onInput({InputType::Rotate, 1});
+    CHECK(app.browsing());
+    CHECK(app.pendingVolume() == -1);
 
     app.onInput({InputType::LongPress, 0});
     CHECK_FALSE(app.browsing());
     app.onExit();
+}
+
+TEST_CASE("a turn right after pausing already opens the menu")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = linked(store, fake,
+                          [](const HttpCall &request) -> std::optional<HttpResult>
+                          {
+                              if (request.method == "GET")
+                              {
+                                  return ok(kPlaying);
+                              }
+                              return HttpResult{204, ""};
+                          });
+    SpotifyApp app(*spotify);
+    app.onEnter();
+    spotify->step();
+    app.update(Duration{1.0F});
+
+    app.onInput({InputType::Press, 0});
+    app.update(Duration{0.01F});
+    app.onInput({InputType::Rotate, 1});
+    CHECK(app.browsing());
+    app.onExit();
+}
+
+TEST_CASE("a list shows the picture of the entry on screen")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, "");
+    SpotifyApp app(*spotify);
+    app.onEnter();
+    spotify->step();
+    app.update(Duration{1.0F});
+
+    app.onInput({InputType::Press, 0});
+    spotify->step();
+    app.update(Duration{1.0F});
+    REQUIRE(fake.pictures == std::vector<std::string>{"https://i.scdn.co/image/road"});
+
+    Surface frame(64, 32);
+    app.render(frame);
+    CHECK(frame.pixel(4, 4).r > 200);
+
+    app.onInput({InputType::Rotate, 1});
+    spotify->step();
+    app.update(Duration{1.0F});
+    Surface without(64, 32);
+    app.render(without);
+    CHECK(without.pixel(4, 4).r < 100);
+    app.onExit();
+}
+
+TEST_CASE("scrolling past entries fetches only the picture it stops on, and only once")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, "");
+    spotify->loadList(SpotifyList::TopTracks);
+    spotify->step();
+    fake.pictures.clear();
+
+    spotify->showItem(1);
+    spotify->showItem(2);
+    spotify->step();
+    CHECK(fake.pictures == std::vector<std::string>{"https://i.scdn.co/image/c"});
+
+    spotify->showItem(0);
+    spotify->step();
+    spotify->showItem(2);
+    spotify->step();
+    CHECK(fake.pictures.size() == 1);
+    CHECK(spotify->snapshot().list_cover != nullptr);
 }
 
 TEST_CASE("a factory reset forgets the link and the Client ID")
@@ -774,13 +880,7 @@ TEST_CASE("the app says what it cannot show")
 
 TEST_CASE("album art decodes and shrinks to 32x32, and junk does not")
 {
-    // A 64x64 solid red JPEG, made with ffmpeg.
-    const std::optional<std::string> jpeg = base64UrlDecode(
-        "_9j_4AAQSkZJRgABAgAAAQABAAD__gAPTGF2YzYxLjMuMTAwAP_bAEMACAoKCwoLDQ0NDQ0NEA8QEBAQ"
-        "EBAQEBAQEBISEhUVFRISEhAQEhIUFBUVFxcXFRUVFRcXGRkZHh4cHCMjJCsrM__EAE0AAQEAAAAAAAAA"
-        "AAAAAAAAAAAGAQEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAA"
-        "AAAAAAD_wAARCABAAEADASIAAhEAAxEA_9oADAMBAAIRAxEAPwCLASjfwAAAAAAAAAAAAAAAAAAAAAAA"
-        "AAAAAAH_2Q");
+    const std::optional<std::string> jpeg = base64UrlDecode(kRedJpeg);
     REQUIRE(jpeg);
 
     const auto cover = decodeCover(*jpeg, 32);

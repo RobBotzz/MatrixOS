@@ -419,7 +419,7 @@ v0.7 is done when all of the following hold:
 3. **Press pauses and resumes, double-press skips forward, a long press goes back a track, rotating
    changes the volume** on the account's active Spotify device.
    While nothing plays, playlists, recently played songs, top songs and top artists can be browsed
-   and started; a long press opens them from a paused track too.
+   and started; rotating opens them from a paused track too.
 4. **Nothing is lost on a restart**: the connection survives a reboot without signing in again,
    because the refresh token is kept.
 5. **Every state is visible on the panel**: not connected, nothing playing, Spotify unreachable —
