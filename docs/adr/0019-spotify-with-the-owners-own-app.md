@@ -91,3 +91,23 @@ behind a slow request, only the latest is sent.
 One detent is 2 percent instead of 5, and the panel shows `45%`: `VOL 45` ran off the right edge
 and left only the tens digit visible. Some devices round the level to coarser steps of their own,
 which the unit cannot change.
+
+## Addendum, 2026-11-05 — browsing while nothing plays
+
+With nothing playing the app offers four modes: playlists, recently played, top songs and top
+artists. Rotate scrolls, press opens or starts, a long press goes back. A paused track still answers
+to a press, so the menu does not replace it; there a long press opens the menu instead of going
+back a track, which is of little use while paused.
+
+- **Starting needs a device.** With nothing playing Spotify has no active device, so a plain play
+  command fails. The unit asks for the account's devices and addresses the active one, otherwise
+  the first that accepts commands. With none it says "open Spotify" on the panel.
+- **Playlists and artists play as a context, shuffled; songs play unshuffled**, with the rest of
+  the list queued behind them so that playback does not stop after one song. Shuffle is sent before
+  play and repeated after it, because a device that is not active yet may refuse it.
+- **Four more scopes** — `user-read-recently-played`, `user-top-read`, `playlist-read-private`
+  and `playlist-read-collaborative` — mean a unit linked earlier has to connect again. Spotify
+  answers its lists with 403, which the panel shows as "sign in again".
+- Each list holds Spotify's maximum of 50 entries in one request, without paging. All of these
+  endpoints remain available to Development Mode apps; audio features and recommendations do not.
+- Lists load only when opened, so the app stays silent off screen as before.

@@ -10,6 +10,7 @@
 #include "gfx/surface.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <string>
 
@@ -35,6 +36,23 @@ constexpr int kVolumeStep = 2;
 constexpr float kVolumeSettle = 0.4F;
 constexpr float kVolumeShown = 1.5F;
 
+constexpr int kListLeft = 1;
+constexpr int kListWidth = 62;
+
+struct Mode
+{
+    std::string_view top;
+    std::string_view bottom;
+    SpotifyList list;
+};
+
+constexpr std::array<Mode, 4> kModes{{
+    {"MY", "PLAYLISTS", SpotifyList::Playlists},
+    {"RECENTLY", "PLAYED", SpotifyList::Recent},
+    {"TOP", "SONGS", SpotifyList::TopTracks},
+    {"TOP", "ARTISTS", SpotifyList::TopArtists},
+}};
+
 std::string panelText(const std::string &text)
 {
     std::string out;
@@ -50,9 +68,9 @@ std::string panelText(const std::string &text)
 
 /// A line that fits stays put; one that does not slides left and back, pausing
 /// at both ends.
-int scrollOffset(int width, float time)
+int scrollOffset(int width, int room, float time)
 {
-    const int overflow = width - kTextWidth;
+    const int overflow = width - room;
     if (overflow <= 0)
     {
         return 0;
@@ -78,12 +96,13 @@ int scrollOffset(int width, float time)
     return overflow - static_cast<int>(t * kScrollSpeed);
 }
 
-void drawClipped(Surface &surface, int y, const std::string &text, Color color, float time)
+void drawClipped(Surface &surface, int left, int room, int y, const std::string &text, Color color,
+                 float time)
 {
     Surface line(textWidth(text) + 1, kGlyphHeight);
     drawText(line, 0, 0, text, color);
-    const int offset = scrollOffset(textWidth(text), time);
-    for (int x = 0; x < kTextWidth; ++x)
+    const int offset = scrollOffset(textWidth(text), room, time);
+    for (int x = 0; x < room; ++x)
     {
         for (int row = 0; row < kGlyphHeight; ++row)
         {
@@ -93,7 +112,7 @@ void drawClipped(Surface &surface, int y, const std::string &text, Color color, 
                 const Color pixel = line.pixel(source, row);
                 if (!(pixel == Color::black()))
                 {
-                    surface.setPixel(kTextLeft + x, y + row, pixel);
+                    surface.setPixel(left + x, y + row, pixel);
                 }
             }
         }
@@ -122,6 +141,9 @@ void SpotifyApp::onEnter()
     revision_seen_ = snapshot_.revision;
     since_revision_ = 0.0F;
     pending_volume_ = -1;
+    browsing_paused_ = false;
+    in_list_ = false;
+    spotify_.clearStart();
 }
 
 void SpotifyApp::onExit()
@@ -129,8 +151,77 @@ void SpotifyApp::onExit()
     spotify_.setActive(false);
 }
 
+bool SpotifyApp::browsing() const
+{
+    if (snapshot_.link != SpotifyLink::Connected)
+    {
+        return false;
+    }
+    return snapshot_.track ? browsing_paused_ : snapshot_.reachable;
+}
+
+void SpotifyApp::onBrowseInput(const InputEvent &event)
+{
+    if (snapshot_.start != SpotifyStart::Idle)
+    {
+        const bool answer = event.type == InputType::Press || event.type == InputType::Rotate;
+        if (answer && snapshot_.start != SpotifyStart::Starting)
+        {
+            spotify_.clearStart();
+            since_read_ = kReadInterval;
+        }
+        return;
+    }
+
+    const int count = in_list_ && snapshot_.list ? static_cast<int>(snapshot_.list->size())
+                                                 : static_cast<int>(kModes.size());
+    switch (event.type)
+    {
+    case InputType::Rotate:
+        if (count > 0)
+        {
+            int &selected = in_list_ ? item_ : mode_;
+            selected = ((selected + event.delta) % count + count) % count;
+            scroll_ = 0.0F;
+        }
+        break;
+    case InputType::Press:
+        if (!in_list_)
+        {
+            in_list_ = true;
+            item_ = 0;
+            scroll_ = 0.0F;
+            spotify_.loadList(kModes[static_cast<std::size_t>(mode_)].list);
+            since_read_ = kReadInterval;
+        }
+        else if (snapshot_.list_state == SpotifyListState::Ready && count > 0)
+        {
+            spotify_.play(static_cast<std::size_t>(item_));
+            since_read_ = kReadInterval;
+        }
+        break;
+    case InputType::LongPress:
+        if (in_list_)
+        {
+            in_list_ = false;
+        }
+        else
+        {
+            browsing_paused_ = false;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 void SpotifyApp::onInput(const InputEvent &event)
 {
+    if (browsing())
+    {
+        onBrowseInput(event);
+        return;
+    }
     if (snapshot_.link != SpotifyLink::Connected || !snapshot_.track)
     {
         return;
@@ -145,7 +236,15 @@ void SpotifyApp::onInput(const InputEvent &event)
         spotify_.next();
         break;
     case InputType::LongPress:
-        spotify_.previous();
+        if (snapshot_.track->playing)
+        {
+            spotify_.previous();
+        }
+        else
+        {
+            browsing_paused_ = true;
+            in_list_ = false;
+        }
         break;
     case InputType::Rotate:
     {
@@ -195,6 +294,11 @@ void SpotifyApp::update(Duration dt)
         {
             scroll_ = 0.0F;
         }
+        if (snapshot_.track && snapshot_.track->playing)
+        {
+            browsing_paused_ = false;
+            in_list_ = false;
+        }
     }
 }
 
@@ -215,13 +319,82 @@ void SpotifyApp::render(Surface &surface)
         break;
     }
 
+    if (browsing())
+    {
+        renderBrowse(surface);
+        return;
+    }
     if (!snapshot_.track)
     {
-        renderMessage(surface, snapshot_.reachable ? "NOTHING" : "SPOTIFY",
-                      snapshot_.reachable ? "PLAYING" : "OFFLINE");
+        renderMessage(surface, "SPOTIFY", "OFFLINE");
         return;
     }
     renderTrack(surface, *snapshot_.track);
+}
+
+void SpotifyApp::renderBrowse(Surface &surface) const
+{
+    switch (snapshot_.start)
+    {
+    case SpotifyStart::Starting:
+        renderMessage(surface, "STARTING", "");
+        return;
+    case SpotifyStart::NoDevice:
+        renderMessage(surface, "OPEN", "SPOTIFY");
+        return;
+    case SpotifyStart::Failed:
+        renderMessage(surface, "COULD NOT", "START");
+        return;
+    case SpotifyStart::Idle:
+        break;
+    }
+
+    if (in_list_)
+    {
+        renderList(surface);
+        return;
+    }
+
+    const Mode &mode = kModes[static_cast<std::size_t>(mode_)];
+    renderMessage(surface, mode.top, mode.bottom);
+    const int left = (surface.width() - static_cast<int>(kModes.size()) * 4 + 2) / 2;
+    for (int i = 0; i < static_cast<int>(kModes.size()); ++i)
+    {
+        fill(surface, left + i * 4, 28, 2, 2, i == mode_ ? kGreen : kTrack);
+    }
+}
+
+void SpotifyApp::renderList(Surface &surface) const
+{
+    switch (snapshot_.list_state)
+    {
+    case SpotifyListState::Idle:
+    case SpotifyListState::Loading:
+        renderMessage(surface, "LOADING", "");
+        return;
+    case SpotifyListState::Failed:
+        renderMessage(surface, "COULD NOT", "LOAD");
+        return;
+    case SpotifyListState::SignIn:
+        renderMessage(surface, "SIGN IN", "AGAIN");
+        return;
+    case SpotifyListState::Ready:
+        break;
+    }
+
+    if (!snapshot_.list || snapshot_.list->empty())
+    {
+        renderMessage(surface, "NOTHING", "HERE");
+        return;
+    }
+
+    const int count = static_cast<int>(snapshot_.list->size());
+    const SpotifyItem &item =
+        (*snapshot_.list)[static_cast<std::size_t>(std::min(item_, count - 1))];
+    const std::string title = panelText(item.title);
+    drawClipped(surface, kListLeft, kListWidth, 3, title.empty() ? "?" : title, kText, scroll_);
+    drawClipped(surface, kListLeft, kListWidth, 13, panelText(item.subtitle), kLabel, scroll_);
+    drawTextCentered(surface, 24, std::to_string(item_ + 1) + "/" + std::to_string(count), kGreen);
 }
 
 void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
@@ -244,7 +417,7 @@ void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
         fill(surface, 0, 0, kCoverSize, kCoverSize, kNoCover);
     }
 
-    drawClipped(surface, 2, panelText(track.title), kText, scroll_);
+    drawClipped(surface, kTextLeft, kTextWidth, 2, panelText(track.title), kText, scroll_);
 
     const int volume = pending_volume_ >= 0 ? pending_volume_ : track.volume;
     if (volume_shown_ > 0.0F && volume >= 0)
@@ -253,7 +426,7 @@ void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
     }
     else
     {
-        drawClipped(surface, 12, panelText(track.artist), kLabel, scroll_);
+        drawClipped(surface, kTextLeft, kTextWidth, 12, panelText(track.artist), kLabel, scroll_);
     }
 
     // Paused: two bars. Playing: a triangle.

@@ -52,6 +52,28 @@ struct Tokens
 
 std::optional<Tokens> parseTokens(std::string_view json);
 
+/// What can be browsed while nothing plays.
+enum class SpotifyList
+{
+    Playlists,
+    Recent,
+    TopTracks,
+    TopArtists,
+};
+
+struct SpotifyItem
+{
+    std::string title;
+    std::string subtitle; ///< artist or playlist owner, empty for an artist
+    std::string uri;
+};
+
+/// The answer for `list`. Entries without a URI cannot be played and are left out.
+std::optional<std::vector<SpotifyItem>> parseItems(SpotifyList list, std::string_view json);
+
+/// `GET /me/player/devices`: the active device, otherwise the first that accepts commands.
+std::optional<std::string> pickDevice(std::string_view json);
+
 /// Where the browser came from, carried through Spotify inside `state` so the
 /// callback page can send the code back (ADR-0019).
 std::string encodeState(std::string_view nonce, std::string_view origin);
@@ -73,6 +95,23 @@ enum class SpotifyLink
 
 std::string_view toString(SpotifyLink link);
 
+enum class SpotifyListState
+{
+    Idle,
+    Loading,
+    Ready,
+    Failed,
+    SignIn, ///< the link predates the scope this list needs
+};
+
+enum class SpotifyStart
+{
+    Idle,
+    Starting,
+    NoDevice,
+    Failed,
+};
+
 struct SpotifySnapshot
 {
     SpotifyLink link = SpotifyLink::NotConnected;
@@ -80,6 +119,9 @@ struct SpotifySnapshot
     std::shared_ptr<const std::vector<std::uint8_t>> cover; ///< 32x32 RGB, may be null
     bool reachable = true;
     std::uint64_t revision = 0; ///< counts up with every answer from Spotify
+    SpotifyListState list_state = SpotifyListState::Idle;
+    std::shared_ptr<const std::vector<SpotifyItem>> list; ///< may be null
+    SpotifyStart start = SpotifyStart::Idle;
 };
 
 /// The owner's Spotify, through the owner's own Spotify app (ADR-0019). The
@@ -92,7 +134,9 @@ public:
     using Get = std::function<std::optional<std::string>(const std::string &url)>;
 
     static constexpr const char *kRedirectUri = "https://robbotzz.github.io/MatrixOS/callback/";
-    static constexpr const char *kScopes = "user-read-playback-state user-modify-playback-state";
+    static constexpr const char *kScopes =
+        "user-read-playback-state user-modify-playback-state user-read-recently-played "
+        "user-top-read playlist-read-private playlist-read-collaborative";
     static constexpr int kCoverSize = 32;
 
     struct Timing
@@ -102,6 +146,7 @@ public:
         std::chrono::milliseconds rate_limited{std::chrono::seconds(30)};
         std::chrono::milliseconds pending_link{std::chrono::minutes(10)};
         std::chrono::milliseconds volume_hold{std::chrono::seconds(3)};
+        std::chrono::milliseconds start_wait{std::chrono::seconds(15)};
     };
 
     SpotifyService(StateStore &store, Call call, Get get);
@@ -135,6 +180,13 @@ public:
     void previous();
     void setVolume(int percent);
 
+    /// Fetches `list` for the snapshot, replacing the one held.
+    void loadList(SpotifyList list);
+
+    /// Starts entry `index` of the loaded list on a device of the account.
+    void play(std::size_t index);
+    void clearStart();
+
     /// Runs queued work and, if due, one poll. The worker's loop body; public
     /// for the tests.
     void step();
@@ -146,8 +198,12 @@ private:
     void exchange(const std::string &code, const std::string &verifier,
                   const std::string &client_id);
     bool refreshToken();
-    std::optional<HttpResult> api(std::string method, const std::string &path, bool send_body);
+    std::optional<HttpResult> api(std::string method, const std::string &path, bool send_body,
+                                  const std::string &json = {});
     void command(std::string method, std::string path);
+    void fetchList(SpotifyList list);
+    void startPlayback(SpotifyList list, const std::vector<SpotifyItem> &items, std::size_t index);
+    void finishStart(SpotifyStart result);
     void updateCover(const std::string &url);
 
     StateSection &saved_;
@@ -166,6 +222,11 @@ private:
     std::chrono::steady_clock::time_point volume_wanted_until_{};
     std::string cover_url_;
     std::shared_ptr<const std::vector<std::uint8_t>> cover_;
+    SpotifyList list_kind_ = SpotifyList::Playlists;
+    SpotifyListState list_state_ = SpotifyListState::Idle;
+    std::shared_ptr<const std::vector<SpotifyItem>> list_;
+    SpotifyStart start_ = SpotifyStart::Idle;
+    std::chrono::steady_clock::time_point start_deadline_{};
     bool reachable_ = true;
     std::uint64_t revision_ = 0;
 

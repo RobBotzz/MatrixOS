@@ -39,6 +39,18 @@ constexpr const char *kPlaying = R"({
   "album": {"images": [{"url": "https://i.scdn.co/image/big", "width": 640},
                        {"url": "https://i.scdn.co/image/small", "width": 64}]}}})";
 
+constexpr const char *kPlaylists = R"({"items": [
+ {"name": "Road", "uri": "spotify:playlist:a", "owner": {"display_name": "Robin"}},
+ null,
+ {"name": "Gym", "uri": "spotify:playlist:b", "owner": {"display_name": "Sam"}}]})";
+
+constexpr const char *kTopTracks = R"({"items": [
+ {"name": "A", "uri": "spotify:track:a", "artists": [{"name": "One"}]},
+ {"name": "B", "uri": "spotify:track:b", "artists": [{"name": "One"}]},
+ {"name": "C", "uri": "spotify:track:c", "artists": [{"name": "Two"}]}]})";
+
+constexpr const char *kDevices = R"({"devices": [{"id": "dev", "is_active": false}]})";
+
 constexpr const char *kTokens =
     R"({"access_token":"AAA","token_type":"Bearer","expires_in":3600,"refresh_token":"RRR"})";
 
@@ -74,16 +86,21 @@ struct FakeSpotify
         return [](const std::string &) { return std::nullopt; };
     }
 
-    bool called(const std::string &method, const std::string &path) const
+    const HttpCall *find(const std::string &method, const std::string &path) const
     {
         for (const auto &c : calls)
         {
             if (c.method == method && c.url.find(path) != std::string::npos)
             {
-                return true;
+                return &c;
             }
         }
-        return false;
+        return nullptr;
+    }
+
+    bool called(const std::string &method, const std::string &path) const
+    {
+        return find(method, path) != nullptr;
     }
 };
 
@@ -115,6 +132,36 @@ linked(StateStore &store, FakeSpotify &fake,
     REQUIRE(spotify->snapshot().link == SpotifyLink::Connected);
     fake.calls.clear();
     return spotify;
+}
+
+/// Nothing playing, the lists answering, and `devices` as the device list.
+std::unique_ptr<SpotifyService> browsingService(StateStore &store, FakeSpotify &fake,
+                                                std::string devices,
+                                                SpotifyService::Timing timing = {})
+{
+    if (devices.empty())
+    {
+        devices = kDevices;
+    }
+    return linked(
+        store, fake,
+        [devices](const HttpCall &request) -> std::optional<HttpResult>
+        {
+            if (request.url.find("/me/player/devices") != std::string::npos)
+            {
+                return ok(devices);
+            }
+            if (request.url.find("/me/playlists") != std::string::npos)
+            {
+                return ok(kPlaylists);
+            }
+            if (request.url.find("/me/top/tracks") != std::string::npos)
+            {
+                return ok(kTopTracks);
+            }
+            return HttpResult{204, ""};
+        },
+        timing);
 }
 
 } // namespace
@@ -448,6 +495,217 @@ TEST_CASE("every digit of the volume reaches the panel")
         }
     }
     CHECK(differs);
+    app.onExit();
+}
+
+TEST_CASE("each list parses into playable entries")
+{
+    const auto playlists = parseItems(SpotifyList::Playlists, kPlaylists);
+    REQUIRE(playlists);
+    REQUIRE(playlists->size() == 2);
+    CHECK((*playlists)[0].title == "Road");
+    CHECK((*playlists)[0].subtitle == "Robin");
+    CHECK((*playlists)[1].uri == "spotify:playlist:b");
+
+    const auto recent = parseItems(SpotifyList::Recent, R"({"items": [
+        {"track": {"name": "Song", "uri": "spotify:track:a",
+                   "artists": [{"name": "One"}, {"name": "Two"}]}},
+        {"track": null}]})");
+    REQUIRE(recent);
+    REQUIRE(recent->size() == 1);
+    CHECK((*recent)[0].subtitle == "One, Two");
+
+    const auto artists = parseItems(SpotifyList::TopArtists,
+                                    R"({"items": [{"name": "One", "uri": "spotify:artist:a"}]})");
+    REQUIRE(artists);
+    REQUIRE(artists->size() == 1);
+    CHECK((*artists)[0].subtitle.empty());
+
+    CHECK_FALSE(parseItems(SpotifyList::TopTracks, "junk"));
+}
+
+TEST_CASE("the active device is preferred and a restricted one is skipped")
+{
+    CHECK(pickDevice(R"({"devices": [{"id": "a", "is_active": false},
+                                     {"id": "b", "is_active": true}]})") == "b");
+    CHECK(pickDevice(R"({"devices": [{"id": "a", "is_restricted": true},
+                                     {"id": "b", "is_active": false}]})") == "b");
+    CHECK_FALSE(pickDevice(R"({"devices": []})"));
+}
+
+TEST_CASE("with nothing playing a playlist starts shuffled on an idle device")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, "");
+    SpotifyApp app(*spotify);
+    app.onEnter();
+    spotify->step();
+    app.update(Duration{1.0F});
+    REQUIRE(app.browsing());
+
+    app.onInput({InputType::Press, 0});
+    spotify->step();
+    CHECK(fake.called("GET", "/me/playlists"));
+    app.update(Duration{1.0F});
+
+    app.onInput({InputType::Rotate, 1});
+    app.onInput({InputType::Press, 0});
+    CHECK(spotify->snapshot().start == SpotifyStart::Starting);
+    spotify->step();
+
+    CHECK(fake.called("PUT", "/me/player/shuffle?state=true&device_id=dev"));
+    const HttpCall *play = fake.find("PUT", "/me/player/play?device_id=dev");
+    REQUIRE(play != nullptr);
+    CHECK(play->body == R"({"context_uri":"spotify:playlist:b"})");
+    CHECK_THAT(play->headers.back(), ContainsSubstring("application/json"));
+    app.onExit();
+}
+
+TEST_CASE("a song from a list plays with everything after it, unshuffled")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, "");
+    spotify->loadList(SpotifyList::TopTracks);
+    spotify->step();
+    REQUIRE(spotify->snapshot().list_state == SpotifyListState::Ready);
+
+    spotify->play(1);
+    spotify->step();
+    CHECK(fake.called("PUT", "/me/player/shuffle?state=false"));
+    const HttpCall *play = fake.find("PUT", "/me/player/play");
+    REQUIRE(play != nullptr);
+    CHECK(play->body == R"({"uris":["spotify:track:b","spotify:track:c"]})");
+}
+
+TEST_CASE("a refused shuffle is asked again once the device plays")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, "");
+    const auto respond = fake.respond;
+    fake.respond = [&fake, respond](const HttpCall &request) -> std::optional<HttpResult>
+    {
+        if (request.url.find("/shuffle") != std::string::npos &&
+            !fake.find("PUT", "/me/player/play"))
+        {
+            return HttpResult{404, ""};
+        }
+        return respond(request);
+    };
+    spotify->loadList(SpotifyList::Playlists);
+    spotify->step();
+    spotify->play(0);
+    spotify->step();
+
+    int asked = 0;
+    for (const HttpCall &call : fake.calls)
+    {
+        asked += call.url.find("/shuffle") != std::string::npos ? 1 : 0;
+    }
+    CHECK(asked == 2);
+    CHECK(fake.calls.back().url.find("/shuffle") != std::string::npos);
+}
+
+TEST_CASE("no device means nothing is sent and the panel says so")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = browsingService(store, fake, R"({"devices": []})");
+    spotify->loadList(SpotifyList::Playlists);
+    spotify->step();
+    spotify->play(0);
+    spotify->step();
+    CHECK(spotify->snapshot().start == SpotifyStart::NoDevice);
+    CHECK_FALSE(fake.called("PUT", "/me/player/play"));
+
+    spotify->clearStart();
+    CHECK(spotify->snapshot().start == SpotifyStart::Idle);
+}
+
+TEST_CASE("starting ends when music plays, or fails if it never does")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    SpotifyService::Timing timing;
+    timing.poll = std::chrono::milliseconds(0);
+    timing.after_command = std::chrono::milliseconds(0);
+
+    SECTION("music plays")
+    {
+        auto spotify = browsingService(store, fake, "", timing);
+        spotify->setActive(true);
+        spotify->loadList(SpotifyList::Playlists);
+        spotify->step();
+        spotify->play(0);
+        const auto respond = fake.respond;
+        fake.respond = [respond](const HttpCall &request) -> std::optional<HttpResult>
+        {
+            if (request.url.ends_with("/me/player"))
+            {
+                return ok(kPlaying);
+            }
+            return respond(request);
+        };
+        spotify->step();
+        CHECK(spotify->snapshot().start == SpotifyStart::Idle);
+    }
+
+    SECTION("it never does")
+    {
+        timing.start_wait = std::chrono::milliseconds(0);
+        auto spotify = browsingService(store, fake, "", timing);
+        spotify->setActive(true);
+        spotify->loadList(SpotifyList::Playlists);
+        spotify->step();
+        spotify->play(0);
+        spotify->step();
+        spotify->step();
+        CHECK(spotify->snapshot().start == SpotifyStart::Failed);
+    }
+}
+
+TEST_CASE("a link without the new scopes is told to sign in again")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = linked(store, fake, [](const HttpCall &) -> std::optional<HttpResult>
+                          { return HttpResult{403, ""}; });
+    spotify->loadList(SpotifyList::TopArtists);
+    spotify->step();
+    CHECK(fake.called("GET", "/me/top/artists"));
+    CHECK(spotify->snapshot().list_state == SpotifyListState::SignIn);
+}
+
+TEST_CASE("a long press browses from a paused track and comes back")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    std::string body = kPlaying;
+    body.replace(body.find("true"), 4, "false");
+    auto spotify = linked(store, fake,
+                          [&body](const HttpCall &request) -> std::optional<HttpResult>
+                          {
+                              if (request.method == "GET")
+                              {
+                                  return ok(body);
+                              }
+                              return HttpResult{204, ""};
+                          });
+    SpotifyApp app(*spotify);
+    app.onEnter();
+    spotify->step();
+    app.update(Duration{1.0F});
+    REQUIRE_FALSE(app.browsing());
+
+    app.onInput({InputType::LongPress, 0});
+    CHECK(app.browsing());
+    spotify->step();
+    CHECK_FALSE(fake.called("POST", "/me/player/previous"));
+
+    app.onInput({InputType::LongPress, 0});
+    CHECK_FALSE(app.browsing());
     app.onExit();
 }
 

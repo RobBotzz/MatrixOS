@@ -35,6 +35,56 @@ constexpr std::chrono::seconds kExpiryMargin{60};
 
 const std::string kFormHeader = "Content-Type: application/x-www-form-urlencoded";
 
+std::string text(const nlohmann::json &object, const char *key)
+{
+    const auto found = object.find(key);
+    return found != object.end() && found->is_string() ? found->get<std::string>() : std::string();
+}
+
+std::string artistNames(const nlohmann::json &item)
+{
+    std::string names;
+    const auto artists = item.find("artists");
+    if (artists != item.end() && artists->is_array())
+    {
+        for (const auto &artist : *artists)
+        {
+            if (artist.is_object())
+            {
+                names += (names.empty() ? "" : ", ") + text(artist, "name");
+            }
+        }
+    }
+    return names;
+}
+
+const char *listPath(SpotifyList list)
+{
+    switch (list)
+    {
+    case SpotifyList::Playlists:
+        return "/me/playlists?limit=50";
+    case SpotifyList::Recent:
+        return "/me/player/recently-played?limit=50";
+    case SpotifyList::TopTracks:
+        return "/me/top/tracks?limit=50";
+    case SpotifyList::TopArtists:
+        return "/me/top/artists?limit=50";
+    }
+    return "";
+}
+
+/// Playlists and artists play as a context, shuffled; tracks play in list order.
+bool isContext(SpotifyList list)
+{
+    return list == SpotifyList::Playlists || list == SpotifyList::TopArtists;
+}
+
+bool accepted(const std::optional<HttpResult> &result)
+{
+    return result && result->status < 300;
+}
+
 } // namespace
 
 std::optional<Track> parsePlayback(std::string_view json)
@@ -55,18 +105,7 @@ std::optional<Track> parsePlayback(std::string_view json)
         track.progress_ms = root.value("progress_ms", 0);
         track.playing = root.value("is_playing", false);
 
-        std::vector<std::string> artists;
-        if (item.contains("artists") && item["artists"].is_array())
-        {
-            for (const auto &artist : item["artists"])
-            {
-                artists.push_back(artist.value("name", ""));
-            }
-        }
-        for (std::size_t i = 0; i < artists.size(); ++i)
-        {
-            track.artist += (i == 0 ? "" : ", ") + artists[i];
-        }
+        track.artist = artistNames(item);
 
         if (root.contains("device") && root["device"].is_object() &&
             root["device"]["volume_percent"].is_number())
@@ -86,6 +125,75 @@ std::optional<Track> parsePlayback(std::string_view json)
     {
         return std::nullopt;
     }
+}
+
+std::optional<std::vector<SpotifyItem>> parseItems(SpotifyList list, std::string_view json)
+{
+    const nlohmann::json root = nlohmann::json::parse(json, nullptr, false);
+    if (root.is_discarded() || !root.is_object() || !root.contains("items") ||
+        !root["items"].is_array())
+    {
+        return std::nullopt;
+    }
+
+    std::vector<SpotifyItem> items;
+    for (const auto &entry : root["items"])
+    {
+        const bool wrapped = list == SpotifyList::Recent;
+        if (!entry.is_object() || (wrapped && !entry.contains("track")))
+        {
+            continue;
+        }
+        const nlohmann::json &item = wrapped ? entry["track"] : entry;
+        if (!item.is_object() || text(item, "uri").empty())
+        {
+            continue;
+        }
+
+        std::string subtitle;
+        if (list == SpotifyList::Playlists)
+        {
+            if (item.contains("owner") && item["owner"].is_object())
+            {
+                subtitle = text(item["owner"], "display_name");
+            }
+        }
+        else if (list != SpotifyList::TopArtists)
+        {
+            subtitle = artistNames(item);
+        }
+        items.push_back({text(item, "name"), std::move(subtitle), text(item, "uri")});
+    }
+    return items;
+}
+
+std::optional<std::string> pickDevice(std::string_view json)
+{
+    const nlohmann::json root = nlohmann::json::parse(json, nullptr, false);
+    if (root.is_discarded() || !root.is_object() || !root.contains("devices") ||
+        !root["devices"].is_array())
+    {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> pick;
+    for (const auto &device : root["devices"])
+    {
+        if (!device.is_object() || text(device, "id").empty() ||
+            device.value("is_restricted", false))
+        {
+            continue;
+        }
+        if (device.value("is_active", false))
+        {
+            return text(device, "id");
+        }
+        if (!pick)
+        {
+            pick = text(device, "id");
+        }
+    }
+    return pick;
 }
 
 std::optional<Tokens> parseTokens(std::string_view json)
@@ -188,7 +296,7 @@ void SpotifyService::begin()
 SpotifySnapshot SpotifyService::snapshot() const
 {
     std::lock_guard lock(mutex_);
-    return {link_, track_, cover_, reachable_, revision_};
+    return {link_, track_, cover_, reachable_, revision_, list_state_, list_, start_};
 }
 
 std::string SpotifyService::clientId() const
@@ -264,6 +372,9 @@ void SpotifyService::unlink()
     track_.reset();
     cover_.reset();
     cover_url_.clear();
+    list_.reset();
+    list_state_ = SpotifyListState::Idle;
+    start_ = SpotifyStart::Idle;
     link_ = SpotifyLink::NotConnected;
     saved_.setString(kRefreshKey, "");
     saved_.save();
@@ -342,6 +453,135 @@ void SpotifyService::setVolume(int percent)
             std::lock_guard lock(mutex_);
             volume_wanted_until_ = std::chrono::steady_clock::now() + timing_.volume_hold;
         });
+}
+
+void SpotifyService::loadList(SpotifyList list)
+{
+    {
+        std::lock_guard lock(mutex_);
+        list_kind_ = list;
+        list_state_ = SpotifyListState::Loading;
+        list_.reset();
+    }
+    post([this, list] { fetchList(list); });
+}
+
+void SpotifyService::fetchList(SpotifyList list)
+{
+    {
+        std::lock_guard lock(mutex_);
+        if (list_kind_ != list)
+        {
+            return;
+        }
+    }
+    const std::optional<HttpResult> result = api("GET", listPath(list), false);
+    std::optional<std::vector<SpotifyItem>> items;
+    if (result && result->status == 200)
+    {
+        items = parseItems(list, result->body);
+    }
+
+    std::lock_guard lock(mutex_);
+    if (list_kind_ != list)
+    {
+        return;
+    }
+    if (items)
+    {
+        list_ = std::make_shared<const std::vector<SpotifyItem>>(std::move(*items));
+        list_state_ = SpotifyListState::Ready;
+    }
+    else
+    {
+        const bool forbidden = result && result->status == 403;
+        list_state_ = forbidden ? SpotifyListState::SignIn : SpotifyListState::Failed;
+    }
+}
+
+void SpotifyService::play(std::size_t index)
+{
+    std::shared_ptr<const std::vector<SpotifyItem>> items;
+    SpotifyList list = SpotifyList::Playlists;
+    {
+        std::lock_guard lock(mutex_);
+        if (!list_ || index >= list_->size())
+        {
+            return;
+        }
+        items = list_;
+        list = list_kind_;
+        start_ = SpotifyStart::Starting;
+        start_deadline_ = std::chrono::steady_clock::time_point::max();
+    }
+    post([this, list, items, index] { startPlayback(list, *items, index); });
+}
+
+void SpotifyService::startPlayback(SpotifyList list, const std::vector<SpotifyItem> &items,
+                                   std::size_t index)
+{
+    const std::optional<HttpResult> devices = api("GET", "/me/player/devices", false);
+    if (!devices || devices->status != 200)
+    {
+        finishStart(SpotifyStart::Failed);
+        return;
+    }
+    const std::optional<std::string> device = pickDevice(devices->body);
+    if (!device)
+    {
+        finishStart(SpotifyStart::NoDevice);
+        return;
+    }
+
+    nlohmann::json body;
+    if (isContext(list))
+    {
+        body["context_uri"] = items[index].uri;
+    }
+    else
+    {
+        body["uris"] = nlohmann::json::array();
+        for (std::size_t i = index; i < items.size(); ++i)
+        {
+            body["uris"].push_back(items[i].uri);
+        }
+    }
+
+    // A device that is not active yet may refuse shuffle until it plays, so it
+    // is asked again afterwards.
+    const std::string target = "device_id=" + percentEncode(*device);
+    const std::string shuffle = std::string("/me/player/shuffle?state=") +
+                                (isContext(list) ? "true" : "false") + "&" + target;
+    const bool shuffled = accepted(api("PUT", shuffle, true));
+
+    const std::optional<HttpResult> played =
+        api("PUT", "/me/player/play?" + target, true, body.dump());
+    if (!accepted(played))
+    {
+        logWarn("spotify: starting playback answered {}", played ? played->status : 0);
+        finishStart(SpotifyStart::Failed);
+        return;
+    }
+    if (!shuffled)
+    {
+        api("PUT", shuffle, true);
+    }
+
+    std::lock_guard lock(mutex_);
+    start_deadline_ = std::chrono::steady_clock::now() + timing_.start_wait;
+    next_poll_ = std::chrono::steady_clock::now() + timing_.after_command;
+}
+
+void SpotifyService::finishStart(SpotifyStart result)
+{
+    std::lock_guard lock(mutex_);
+    start_ = result;
+}
+
+void SpotifyService::clearStart()
+{
+    std::lock_guard lock(mutex_);
+    start_ = SpotifyStart::Idle;
 }
 
 void SpotifyService::post(std::function<void()> job)
@@ -490,7 +730,7 @@ bool SpotifyService::refreshToken()
 }
 
 std::optional<HttpResult> SpotifyService::api(std::string method, const std::string &path,
-                                              bool send_body)
+                                              bool send_body, const std::string &json)
 {
     for (int attempt = 0; attempt < 2; ++attempt)
     {
@@ -522,6 +762,11 @@ std::optional<HttpResult> SpotifyService::api(std::string method, const std::str
         request.url = std::string(kApi) + path;
         request.headers = {"Authorization: Bearer " + access};
         request.send_body = send_body;
+        if (!json.empty())
+        {
+            request.headers.emplace_back("Content-Type: application/json");
+            request.body = json;
+        }
 
         std::optional<HttpResult> result = call_(request);
         if (result && result->status == 401 && attempt == 0)
@@ -543,6 +788,11 @@ bool SpotifyService::poll()
     {
         std::lock_guard lock(mutex_);
         reachable_ = result.has_value();
+        const auto now = std::chrono::steady_clock::now();
+        if (start_ == SpotifyStart::Starting && now >= start_deadline_)
+        {
+            start_ = SpotifyStart::Failed;
+        }
         if (!result)
         {
             return false;
@@ -577,6 +827,14 @@ bool SpotifyService::poll()
             return false;
         }
         ++revision_;
+        if (track_ && track_->playing)
+        {
+            start_ = SpotifyStart::Idle;
+        }
+        else if (start_ == SpotifyStart::Starting)
+        {
+            next_poll_ = now + timing_.after_command;
+        }
         if (track_ && track_->cover_url != cover_url_)
         {
             cover_url = track_->cover_url;

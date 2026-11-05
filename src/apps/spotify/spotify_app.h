@@ -13,7 +13,9 @@ namespace matrixos
 {
 
 /// What the owner's Spotify is playing (v0.7, ADR-0019). Press plays or pauses,
-/// double-press skips, a long press goes back, rotating sets the volume.
+/// double-press skips, a long press goes back, rotating sets the volume. While
+/// nothing plays it browses playlists, history and top lists instead; a long
+/// press opens that from a paused track as well.
 class SpotifyApp : public App
 {
 public:
@@ -31,7 +33,13 @@ public:
     /// The level being dialled in, or -1 while the knob is not being turned.
     int pendingVolume() const { return pending_volume_; }
 
+    /// Showing the mode choice or a list rather than a track.
+    bool browsing() const;
+
 private:
+    void onBrowseInput(const InputEvent &event);
+    void renderBrowse(Surface &surface) const;
+    void renderList(Surface &surface) const;
     void renderTrack(Surface &surface, const Track &track) const;
     void renderMessage(Surface &surface, std::string_view top, std::string_view bottom) const;
 
@@ -45,6 +53,11 @@ private:
     int pending_volume_ = -1;
     float since_turn_ = 0.0F;
     float volume_shown_ = 0.0F;
+
+    bool browsing_paused_ = false; ///< opened from a paused track, which stays underneath
+    bool in_list_ = false;
+    int mode_ = 0;
+    int item_ = 0;
 };
 
 } // namespace matrixos
