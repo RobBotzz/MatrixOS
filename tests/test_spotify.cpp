@@ -5,6 +5,7 @@
 // Free Software Foundation. See LICENSE for details.
 
 #include "apps/spotify/spotify_app.h"
+#include "gfx/font.h"
 #include "gfx/surface.h"
 #include "net/http_get.h"
 #include "net/spotify_routes.h"
@@ -94,7 +95,8 @@ std::optional<HttpResult> ok(std::string body)
 /// A service already linked, with the token endpoint answering `kTokens`.
 std::unique_ptr<SpotifyService>
 linked(StateStore &store, FakeSpotify &fake,
-       std::function<std::optional<HttpResult>(const HttpCall &)> player)
+       std::function<std::optional<HttpResult>(const HttpCall &)> player,
+       SpotifyService::Timing timing = {})
 {
     fake.respond = [player](const HttpCall &request) -> std::optional<HttpResult>
     {
@@ -104,7 +106,8 @@ linked(StateStore &store, FakeSpotify &fake,
         }
         return player(request);
     };
-    auto spotify = std::make_unique<SpotifyService>(store, fake.call(), FakeSpotify::noCover());
+    auto spotify =
+        std::make_unique<SpotifyService>(store, fake.call(), FakeSpotify::noCover(), timing);
     const std::string url = spotify->startLink(kClientId, kOrigin);
     const std::string state = url.substr(url.find("state=") + 6);
     REQUIRE(spotify->finishLink("CODE", urlDecode(state)));
@@ -322,13 +325,129 @@ TEST_CASE("press, double-press, long press and the knob become player commands")
     CHECK(fake.called("POST", "/me/player/previous"));
 
     app.onInput({InputType::Rotate, 2});
-    CHECK(app.pendingVolume() == 50);
+    CHECK(app.pendingVolume() == 44);
     app.update(Duration{0.1F});
     spotify->step();
     CHECK_FALSE(fake.called("PUT", "volume_percent"));
     app.update(Duration{0.5F});
     spotify->step();
-    CHECK(fake.called("PUT", "/me/player/volume?volume_percent=50"));
+    CHECK(fake.called("PUT", "/me/player/volume?volume_percent=44"));
+    app.onExit();
+}
+
+TEST_CASE("a stale answer does not undo the volume just set")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    std::string body = kPlaying;
+    SpotifyService::Timing timing;
+    timing.poll = std::chrono::milliseconds(0);
+    timing.after_command = std::chrono::milliseconds(0);
+    timing.volume_hold = std::chrono::hours(1);
+    auto spotify = linked(
+        store, fake,
+        [&body](const HttpCall &request) -> std::optional<HttpResult>
+        {
+            if (request.method == "GET")
+            {
+                return ok(body);
+            }
+            return HttpResult{204, ""};
+        },
+        timing);
+    spotify->setActive(true);
+    spotify->step();
+    REQUIRE(spotify->snapshot().track->volume == 40);
+
+    spotify->setVolume(60);
+    spotify->step();
+    CHECK(spotify->snapshot().track->volume == 60);
+
+    body.replace(body.find("40"), 2, "60");
+    spotify->step();
+    CHECK(spotify->snapshot().track->volume == 60);
+
+    body.replace(body.find("60"), 2, "30");
+    spotify->step();
+    CHECK(spotify->snapshot().track->volume == 30);
+}
+
+TEST_CASE("Spotify's level counts again once the hold runs out")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    SpotifyService::Timing timing;
+    timing.poll = std::chrono::milliseconds(0);
+    timing.after_command = std::chrono::milliseconds(0);
+    timing.volume_hold = std::chrono::milliseconds(0);
+    auto spotify = linked(
+        store, fake,
+        [](const HttpCall &request) -> std::optional<HttpResult>
+        {
+            if (request.method == "GET")
+            {
+                return ok(kPlaying);
+            }
+            return HttpResult{204, ""};
+        },
+        timing);
+    spotify->setActive(true);
+    spotify->step();
+
+    spotify->setVolume(60);
+    spotify->step();
+    CHECK(spotify->snapshot().track->volume == 40);
+}
+
+TEST_CASE("only the latest volume is sent when several queue up")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = linked(store, fake,
+                          [](const HttpCall &request) -> std::optional<HttpResult>
+                          {
+                              if (request.method == "GET")
+                              {
+                                  return ok(kPlaying);
+                              }
+                              return HttpResult{204, ""};
+                          });
+    spotify->setVolume(50);
+    spotify->setVolume(60);
+    spotify->step();
+    CHECK_FALSE(fake.called("PUT", "volume_percent=50"));
+    CHECK(fake.called("PUT", "volume_percent=60"));
+}
+
+TEST_CASE("every digit of the volume reaches the panel")
+{
+    StateStore store = StateStore::inMemory();
+    FakeSpotify fake;
+    auto spotify = linked(store, fake, [](const HttpCall &) { return ok(kPlaying); });
+    SpotifyApp app(*spotify);
+    app.onEnter();
+    spotify->step();
+    app.update(Duration{1.0F});
+
+    const auto frameAfterTurn = [&app]
+    {
+        app.onInput({InputType::Rotate, 1});
+        Surface frame(64, 32);
+        app.render(frame);
+        return frame;
+    };
+    const Surface first = frameAfterTurn();
+    const Surface second = frameAfterTurn();
+
+    bool differs = false;
+    for (int y = 12; y < 12 + kGlyphHeight; ++y)
+    {
+        for (int x = 0; x < 64; ++x)
+        {
+            differs = differs || !(first.pixel(x, y) == second.pixel(x, y));
+        }
+    }
+    CHECK(differs);
     app.onExit();
 }
 

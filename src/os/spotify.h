@@ -101,6 +101,7 @@ public:
         std::chrono::milliseconds after_command{std::chrono::milliseconds(400)};
         std::chrono::milliseconds rate_limited{std::chrono::seconds(30)};
         std::chrono::milliseconds pending_link{std::chrono::minutes(10)};
+        std::chrono::milliseconds volume_hold{std::chrono::seconds(3)};
     };
 
     SpotifyService(StateStore &store, Call call, Get get);
@@ -161,6 +162,8 @@ private:
     std::chrono::steady_clock::time_point access_expiry_{};
     SpotifyLink link_ = SpotifyLink::NotConnected;
     std::optional<Track> track_;
+    std::optional<int> volume_wanted_; ///< wins over polled levels until Spotify agrees
+    std::chrono::steady_clock::time_point volume_wanted_until_{};
     std::string cover_url_;
     std::shared_ptr<const std::vector<std::uint8_t>> cover_;
     bool reachable_ = true;

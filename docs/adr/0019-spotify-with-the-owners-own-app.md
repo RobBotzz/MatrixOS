@@ -79,3 +79,15 @@ keeps the refresh token on the state partition.**
 - **Cover art converted elsewhere** — there is no browser in the loop while music plays, and a
   service of our own is what ADR-0007 rejected. A vendored decoder for one 64-pixel JPEG is the
   smaller thing.
+
+## Addendum, 2026-11-05 — volume readback
+
+Spotify answers the next `GET /me/player` with the old level for a moment after a volume command.
+That answer overwrote the level just set, so the number jumped back and the next turn of the knob
+started from the wrong value. The level set on the unit now wins over polled levels until Spotify
+reports the same value, or until 3 seconds after the command finished. If several levels queue up
+behind a slow request, only the latest is sent.
+
+One detent is 2 percent instead of 5, and the panel shows `45%`: `VOL 45` ran off the right edge
+and left only the tens digit visible. Some devices round the level to coarser steps of their own,
+which the unit cannot change.

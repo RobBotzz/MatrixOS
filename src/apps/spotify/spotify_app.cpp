@@ -31,7 +31,7 @@ constexpr int kTextWidth = 64 - kTextLeft;
 constexpr float kReadInterval = 0.25F;
 constexpr float kScrollSpeed = 12.0F; ///< pixels per second
 constexpr float kScrollPause = 1.5F;  ///< seconds at each end
-constexpr int kVolumeStep = 5;
+constexpr int kVolumeStep = 2;
 constexpr float kVolumeSettle = 0.4F;
 constexpr float kVolumeShown = 1.5F;
 
@@ -176,6 +176,7 @@ void SpotifyApp::update(Duration dt)
         {
             spotify_.setVolume(pending_volume_);
             pending_volume_ = -1;
+            since_read_ = kReadInterval; // the old level must not flash up
         }
     }
 
@@ -248,7 +249,7 @@ void SpotifyApp::renderTrack(Surface &surface, const Track &track) const
     const int volume = pending_volume_ >= 0 ? pending_volume_ : track.volume;
     if (volume_shown_ > 0.0F && volume >= 0)
     {
-        drawText(surface, kTextLeft, 12, "VOL " + std::to_string(volume), kGreen);
+        drawText(surface, kTextLeft, 12, std::to_string(volume) + "%", kGreen);
     }
     else
     {

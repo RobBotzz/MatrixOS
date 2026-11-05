@@ -320,14 +320,28 @@ void SpotifyService::setVolume(int percent)
     const int volume = std::clamp(percent, 0, 100);
     {
         std::lock_guard lock(mutex_);
+        volume_wanted_ = volume;
+        volume_wanted_until_ = std::chrono::steady_clock::time_point::max();
         if (track_)
         {
             track_->volume = volume;
             ++revision_;
         }
     }
-    post([this, volume]
-         { command("PUT", "/me/player/volume?volume_percent=" + std::to_string(volume)); });
+    post(
+        [this, volume]
+        {
+            {
+                std::lock_guard lock(mutex_);
+                if (volume_wanted_ != volume)
+                {
+                    return; // a newer level is already queued
+                }
+            }
+            command("PUT", "/me/player/volume?volume_percent=" + std::to_string(volume));
+            std::lock_guard lock(mutex_);
+            volume_wanted_until_ = std::chrono::steady_clock::now() + timing_.volume_hold;
+        });
 }
 
 void SpotifyService::post(std::function<void()> job)
@@ -545,6 +559,18 @@ bool SpotifyService::poll()
         else if (result->status == 200)
         {
             track_ = parsePlayback(result->body);
+            if (track_ && volume_wanted_)
+            {
+                if (track_->volume == *volume_wanted_ ||
+                    std::chrono::steady_clock::now() >= volume_wanted_until_)
+                {
+                    volume_wanted_.reset();
+                }
+                else
+                {
+                    track_->volume = *volume_wanted_;
+                }
+            }
         }
         else
         {
